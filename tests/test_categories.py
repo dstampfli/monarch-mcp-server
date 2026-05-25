@@ -193,6 +193,78 @@ class TestUpdateCategory:
         assert call_vars["input"]["rolloverStartMonth"] == "2026-05-01"
 
     @patch("monarch_mcp_server.tools.categories.get_monarch_client")
+    async def test_invalid_budget_variability(self, mock_get_client):
+        result = json.loads(
+            await update_category(category_id="cat-123", budget_variability="bogus")
+        )
+
+        assert result["success"] is False
+        assert "Invalid budget_variability" in result["message"]
+        assert "bogus" in result["message"]
+        mock_get_client.assert_not_called()
+
+    @patch("monarch_mcp_server.tools.categories.get_monarch_client")
+    async def test_invalid_rollover_frequency(self, mock_get_client):
+        result = json.loads(
+            await update_category(category_id="cat-123", rollover_frequency="weekly")
+        )
+
+        assert result["success"] is False
+        assert "Invalid rollover_frequency" in result["message"]
+        mock_get_client.assert_not_called()
+
+    @patch("monarch_mcp_server.tools.categories.get_monarch_client")
+    async def test_dry_run_returns_current_and_proposed(self, mock_get_client):
+        mock_client = AsyncMock()
+        mock_client.gql_call.return_value = {
+            "category": {
+                "id": "cat-123",
+                "order": 1,
+                "name": "Fitness Subscriptions",
+                "icon": "\U0001f3cb",
+                "isSystemCategory": False,
+                "systemCategory": None,
+                "excludeFromBudget": False,
+                "isDisabled": False,
+                "group": {"id": "grp-1", "name": "Bills", "type": "expense"},
+                "rolloverPeriod": None,
+                "budgetAmountsForMonth": None,
+            }
+        }
+        mock_get_client.return_value = mock_client
+
+        result = json.loads(
+            await update_category(
+                category_id="cat-123",
+                budget_variability="non_monthly",
+                rollover_enabled=True,
+                dry_run=True,
+            )
+        )
+
+        assert result["dry_run"] is True
+        assert result["current"]["name"] == "Fitness Subscriptions"
+        assert result["proposed_changes"]["budgetVariability"] == "non_monthly"
+        assert result["proposed_changes"]["rolloverEnabled"] is True
+        # Mutation should NOT have been called
+        assert mock_client.gql_call.call_args.kwargs["operation"] == "GetCategoryDetails"
+
+    @patch("monarch_mcp_server.tools.categories.get_monarch_client")
+    async def test_dry_run_category_not_found(self, mock_get_client):
+        mock_client = AsyncMock()
+        mock_client.gql_call.return_value = {"category": None}
+        mock_get_client.return_value = mock_client
+
+        result = json.loads(
+            await update_category(
+                category_id="nonexistent", name="Test", dry_run=True
+            )
+        )
+
+        assert result["success"] is False
+        assert "No category found" in result["message"]
+
+    @patch("monarch_mcp_server.tools.categories.get_monarch_client")
     async def test_no_fields_provided(self, mock_get_client):
         result = json.loads(await update_category(category_id="cat-123"))
 

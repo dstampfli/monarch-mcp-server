@@ -209,6 +209,10 @@ query GetAggregatesGraph($startDate: Date, $endDate: Date) {
 # ---------------------------------------------------------------------------
 
 
+_VALID_BUDGET_VARIABILITY = {"fixed", "flexible", "non_monthly"}
+_VALID_ROLLOVER_FREQUENCY = {"monthly", "variable"}
+
+
 @mcp.tool()
 async def update_category(
     category_id: str,
@@ -224,6 +228,7 @@ async def update_category(
     rollover_frequency: Optional[str] = None,
     rollover_target_amount: Optional[float] = None,
     rollover_type: Optional[str] = None,
+    dry_run: bool = False,
 ) -> str:
     """
     Update an existing category's settings.
@@ -251,10 +256,13 @@ async def update_category(
             "variable".
         rollover_target_amount: Target amount for rollover savings goal.
         rollover_type: Rollover type. Values: "monthly".
+        dry_run: If True, return the planned changes without executing the
+            mutation. Shows current vs proposed values.
 
     Returns:
         Updated category details including budget variability and rollover
-        configuration.
+        configuration. In dry_run mode, returns current state and proposed
+        changes without applying them.
 
     Example:
         Change a category to non-monthly with rollover:
@@ -266,8 +274,37 @@ async def update_category(
                 rollover_starting_balance=0,
                 rollover_frequency="variable",
             )
+
+        Preview changes without applying:
+            update_category(
+                category_id="243338338825232741",
+                budget_variability="flexible",
+                dry_run=True,
+            )
     """
     try:
+        if budget_variability and budget_variability not in _VALID_BUDGET_VARIABILITY:
+            return json_success(
+                {
+                    "success": False,
+                    "message": (
+                        f"Invalid budget_variability: {budget_variability!r}. "
+                        f"Must be one of: {sorted(_VALID_BUDGET_VARIABILITY)}"
+                    ),
+                }
+            )
+
+        if rollover_frequency and rollover_frequency not in _VALID_ROLLOVER_FREQUENCY:
+            return json_success(
+                {
+                    "success": False,
+                    "message": (
+                        f"Invalid rollover_frequency: {rollover_frequency!r}. "
+                        f"Must be one of: {sorted(_VALID_ROLLOVER_FREQUENCY)}"
+                    ),
+                }
+            )
+
         field_map: Dict[str, Any] = {
             "name": name,
             "icon": icon,
@@ -290,6 +327,39 @@ async def update_category(
                 {
                     "success": False,
                     "message": "At least one field to update must be provided.",
+                }
+            )
+
+        if dry_run:
+            client = await get_monarch_client()
+            current = await client.gql_call(
+                operation="GetCategoryDetails",
+                graphql_query=GET_CATEGORY_DETAILS_QUERY,
+                variables={
+                    "id": category_id,
+                    "month": datetime.now().strftime("%Y-%m-01"),
+                    "includeBudgetAmounts": False,
+                },
+            )
+            cat = current.get("category")
+            if not cat:
+                return json_success(
+                    {
+                        "success": False,
+                        "message": "No category found with the given ID.",
+                    }
+                )
+            return json_success(
+                {
+                    "dry_run": True,
+                    "category_id": category_id,
+                    "current": {
+                        "name": cat.get("name"),
+                        "icon": cat.get("icon"),
+                        "exclude_from_budget": cat.get("excludeFromBudget"),
+                        "is_disabled": cat.get("isDisabled"),
+                    },
+                    "proposed_changes": provided,
                 }
             )
 
