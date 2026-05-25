@@ -193,6 +193,40 @@ class TestUpdateCategory:
         assert call_vars["input"]["rolloverStartMonth"] == "2026-05-01"
 
     @patch("monarch_mcp_server.tools.categories.get_monarch_client")
+    async def test_falsy_values_not_dropped(self, mock_get_client):
+        mock_client = AsyncMock()
+        mock_client.gql_call.return_value = {
+            "updateCategory": {
+                "errors": None,
+                "category": {
+                    "id": "cat-123",
+                    "name": "Test",
+                    "icon": "X",
+                    "budgetVariability": "fixed",
+                    "excludeFromBudget": False,
+                    "isSystemCategory": False,
+                    "isDisabled": False,
+                    "isProtected": False,
+                    "group": {"id": "grp-1", "type": "expense", "groupLevelBudgetingEnabled": False},
+                    "rolloverPeriod": None,
+                },
+            }
+        }
+        mock_get_client.return_value = mock_client
+
+        await update_category(
+            category_id="cat-123",
+            exclude_from_budget=False,
+            rollover_enabled=False,
+            rollover_starting_balance=0,
+        )
+
+        call_vars = mock_client.gql_call.call_args.kwargs["variables"]
+        assert call_vars["input"]["excludeFromBudget"] is False
+        assert call_vars["input"]["rolloverEnabled"] is False
+        assert call_vars["input"]["rolloverStartingBalance"] == 0
+
+    @patch("monarch_mcp_server.tools.categories.get_monarch_client")
     async def test_invalid_budget_variability(self, mock_get_client):
         result = json.loads(
             await update_category(category_id="cat-123", budget_variability="bogus")

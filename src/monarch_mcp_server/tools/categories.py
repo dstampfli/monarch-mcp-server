@@ -283,7 +283,10 @@ async def update_category(
             )
     """
     try:
-        if budget_variability and budget_variability not in _VALID_BUDGET_VARIABILITY:
+        if (
+            budget_variability is not None
+            and budget_variability not in _VALID_BUDGET_VARIABILITY
+        ):
             return json_success(
                 {
                     "success": False,
@@ -294,7 +297,10 @@ async def update_category(
                 }
             )
 
-        if rollover_frequency and rollover_frequency not in _VALID_ROLLOVER_FREQUENCY:
+        if (
+            rollover_frequency is not None
+            and rollover_frequency not in _VALID_ROLLOVER_FREQUENCY
+        ):
             return json_success(
                 {
                     "success": False,
@@ -305,22 +311,31 @@ async def update_category(
                 }
             )
 
-        field_map: Dict[str, Any] = {
-            "name": name,
-            "icon": icon,
-            "group": group_id,
-            "type": category_type,
-            "excludeFromBudget": exclude_from_budget,
-            "budgetVariability": budget_variability,
-            "rolloverEnabled": rollover_enabled,
-            "rolloverStartMonth": rollover_start_month,
-            "rolloverStartingBalance": rollover_starting_balance,
-            "rolloverFrequency": rollover_frequency,
-            "rolloverTargetAmount": rollover_target_amount,
-            "rolloverType": rollover_type,
-        }
-
-        provided = {k: v for k, v in field_map.items() if v is not None}
+        provided: Dict[str, Any] = {}
+        if name is not None:
+            provided["name"] = name
+        if icon is not None:
+            provided["icon"] = icon
+        if group_id is not None:
+            provided["group"] = group_id
+        if category_type is not None:
+            provided["type"] = category_type
+        if exclude_from_budget is not None:
+            provided["excludeFromBudget"] = exclude_from_budget
+        if budget_variability is not None:
+            provided["budgetVariability"] = budget_variability
+        if rollover_enabled is not None:
+            provided["rolloverEnabled"] = rollover_enabled
+        if rollover_start_month is not None:
+            provided["rolloverStartMonth"] = rollover_start_month
+        if rollover_starting_balance is not None:
+            provided["rolloverStartingBalance"] = rollover_starting_balance
+        if rollover_frequency is not None:
+            provided["rolloverFrequency"] = rollover_frequency
+        if rollover_target_amount is not None:
+            provided["rolloverTargetAmount"] = rollover_target_amount
+        if rollover_type is not None:
+            provided["rolloverType"] = rollover_type
 
         if not provided:
             return json_success(
@@ -570,17 +585,17 @@ async def get_cashflow_by_month(
             categories_list.append(
                 {
                     "category_id": cat_id,
-                    "total_absolute": abs_total,
+                    "_sort_key": abs_total,
                     "monthly_totals": sorted(
                         monthly_totals, key=lambda m: m.get("month") or ""
                     ),
                 }
             )
 
-        categories_list.sort(key=lambda c: c["total_absolute"], reverse=True)
+        categories_list.sort(key=lambda c: c["_sort_key"], reverse=True)
 
         for cat in categories_list:
-            del cat["total_absolute"]
+            del cat["_sort_key"]
 
         return json_success(
             {
