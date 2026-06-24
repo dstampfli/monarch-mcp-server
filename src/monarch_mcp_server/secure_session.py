@@ -23,36 +23,32 @@ _TOKEN_DIR = Path.home() / ".monarch-mcp-server"
 _TOKEN_FILE = _TOKEN_DIR / "token"
 
 
+_PROBE_USERNAME = "__keyring_probe__"
+
+
 def _keyring_available() -> bool:
-    """Check whether a usable keyring backend is available."""
+    """Probe whether the active keyring backend can actually round-trip a value.
+
+    Class-name sniffing is unreliable: the macOS Keychain backend
+    (`keyring.backends.macOS.Keyring`) and the no-op fail backend
+    (`keyring.backends.fail.Keyring`) share the class name `Keyring`, so a
+    name-based check rejects real macOS keyrings and silently falls back to
+    plaintext file storage. We instead set + get + delete a sentinel value
+    and trust the backend only if every step succeeds.
+    """
     try:
         import keyring
-        backend = keyring.get_keyring()
-        # The fail backend means no real backend was found
-        from keyrings.alt import file as _  # noqa: F401 – probe import
-        # If we get here, keyrings.alt is installed but may be the only option.
-        # Fall through and check the backend name.
     except ImportError:
-        pass
+        return False
 
     try:
-        import keyring
-        backend = keyring.get_keyring()
-        backend_name = type(backend).__name__
-        # These backends indicate no real keyring is available
-        if backend_name in ("Keyring", "NullKeyring", "FailKeyring", "ChainerBackend"):
-            # ChainerBackend may wrap a real backend — try a round-trip test
-            if backend_name == "ChainerBackend":
-                try:
-                    keyring.set_password(KEYRING_SERVICE, "__probe__", "1")
-                    keyring.delete_password(KEYRING_SERVICE, "__probe__")
-                    return True
-                except Exception:
-                    return False
-            return False
-        return True
+        keyring.set_password(KEYRING_SERVICE, _PROBE_USERNAME, "1")
+        stored = keyring.get_password(KEYRING_SERVICE, _PROBE_USERNAME)
+        keyring.delete_password(KEYRING_SERVICE, _PROBE_USERNAME)
     except Exception:
         return False
+
+    return stored == "1"
 
 
 class SecureMonarchSession:
