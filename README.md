@@ -216,8 +216,8 @@ Once authenticated, use these tools directly in Claude Desktop or Claude Code:
 
 ### 🤖 Transaction Rules (Auto-Categorization)
 - **Get Transaction Rules**: List all auto-categorization rules
-- **Create Transaction Rule**: Create rules with merchant/amount conditions to auto-categorize
-- **Update Transaction Rule**: Modify existing rules
+- **Create Transaction Rule**: Create rules with merchant/amount conditions to auto-categorize (amount supports `gt`/`lt`/`eq` via `amount_value`, or `between` via `amount_value_lower`/`amount_value_upper`)
+- **Update Transaction Rule**: Modify existing rules — reads the current rule and merges, so fields you don't pass aren't wiped
 - **Delete Transaction Rule**: Remove a rule
 
 ### 🔄 Merchant & Recurring Stream Management
@@ -227,7 +227,7 @@ Once authenticated, use these tools directly in Claude Desktop or Claude Code:
 
 ### ✂️ Transaction Splits
 - **Get Transaction Splits**: View how a transaction has been split into parts
-- **Split Transaction**: Divide a single transaction into multiple parts with different categories or merchants
+- **Split Transaction**: Divide a single transaction into multiple parts with different categories or merchants; pass `dry_run=True` to preview the split total before applying
 
 ### 💵 Budget Management
 - **Get Budgets**: Access budget information including spent amounts and remaining balances by category
@@ -271,7 +271,7 @@ Once authenticated, use these tools directly in Claude Desktop or Claude Code:
 | `refresh_accounts` | Request account data refresh | `account_ids` (optional — defaults to all active, visible accounts) |
 | `get_categories` | List all transaction categories | None |
 | `get_category_groups` | List category groups with categories | None |
-| `get_transactions_needing_review` | Get transactions needing review | `needs_review`, `days`, `uncategorized`, `no_notes` |
+| `get_transactions_needing_review` | Get transactions needing review (pages through results to fill `limit`) | `needs_review`, `days`, `uncategorized_only`, `without_notes_only`, `limit`, `account_id` |
 | `set_transaction_category` | Set category on a transaction | `transaction_id`, `category_id`, `mark_reviewed` |
 | `update_transaction_notes` | Update notes on a transaction | `transaction_id`, `notes` |
 | `mark_transaction_reviewed` | Mark transaction as reviewed | `transaction_id` |
@@ -284,14 +284,14 @@ Once authenticated, use these tools directly in Claude Desktop or Claude Code:
 | `delete_transaction` | Delete a transaction | `transaction_id` |
 | `get_recurring_transactions` | Get recurring transactions | None |
 | `get_transaction_rules` | List auto-categorization rules | None |
-| `create_transaction_rule` | Create an auto-categorization rule | `merchant_criteria_operator`, `merchant_criteria_value`, `set_category_id`, `add_tag_ids`, `amount_operator`, `amount_value` |
-| `update_transaction_rule` | Update an existing rule | `rule_id`, `merchant_criteria_operator`, `merchant_criteria_value`, `set_category_id` |
+| `create_transaction_rule` | Create an auto-categorization rule | `merchant_criteria_operator`, `merchant_criteria_value`, `merchant_criteria_values`, `amount_operator`, `amount_value`, `amount_value_lower`, `amount_value_upper`, `set_category_id`, `set_merchant_name`, `add_tag_ids`, `account_ids`, `apply_to_existing` |
+| `update_transaction_rule` | Update a rule (reads + merges existing fields so omitted ones aren't cleared) | `rule_id` + any `create_transaction_rule` field to override |
 | `delete_transaction_rule` | Delete a rule | `rule_id` |
 | `get_merchant` | Get merchant details with recurring stream | `merchant_id` |
 | `update_merchant` | Update merchant name/recurring stream | `merchant_id`, `name`, `is_recurring`, `frequency`, `base_date`, `amount`, `is_active` |
 | `review_recurring_stream` | Set recurring stream review status | `stream_id`, `review_status` |
 | `get_transaction_splits` | Get splits for a transaction | `transaction_id` |
-| `split_transaction` | Split a transaction into parts | `transaction_id`, `splits` (JSON array) |
+| `split_transaction` | Split a transaction into parts | `transaction_id`, `splits` (JSON array), `dry_run` |
 | `get_transactions_summary` | Get high-level transaction statistics | None |
 | `get_spending_summary` | Get spending breakdown by category | `start_date`, `end_date`, `limit` |
 
@@ -429,6 +429,9 @@ If your session dies quickly (under a couple of hours), the most common cause is
 ### Cloudflare CAPTCHA on login
 If `login_setup.py` reports "Programmatic login is blocked by Cloudflare CAPTCHA", choose option 1 (browser cookies) instead. Email/password POSTs to Monarch's login endpoint are sometimes gated by Cloudflare for unfamiliar IPs or rapid retries; cookie-based auth bypasses that endpoint entirely.
 
+### Cookie paste is cut off / cookie login fails with a long cookie
+Terminals on macOS/Linux truncate a single pasted line longer than ~1024 characters at the hidden `getpass` prompt, so a long `cookie:` header gets silently cut off and cookie login fails. The bulk of that length is analytics/consent cookies (`ajs_*`, `osano_*`) that aren't needed for auth — before pasting, trim the value down to the essential session cookies (`session_id`, `csrftoken`, and `cf_clearance`), which comfortably fit under the limit.
+
 ### `'Context' object has no attribute 'elicit'`
 The `monarch_login` and `monarch_login_with_token` tools require the MCP Python SDK 1.10.0 or newer (released June 2025). If your environment cached an older `mcp` install, refresh it:
 
@@ -482,7 +485,7 @@ Several tools mutate your Monarch ledger (`create_transaction`, `update_transact
 
 Because the LLM can be influenced by data it reads back (a malicious-looking memo or merchant name in a transaction), the safest setup is to configure your MCP client to require manual approval before any mutating tool runs. In Claude Desktop and Claude Code this is the default behavior for unknown tools; keep it that way for the tools listed above rather than allow-listing them.
 
-`bulk_categorize_transactions` and `upload_account_balance_history` also accept a `dry_run=True` argument that returns the planned changes without executing them, useful for previewing a bulk action before approving it.
+`bulk_categorize_transactions`, `upload_account_balance_history`, and `split_transaction` also accept a `dry_run=True` argument that returns the planned changes without executing them, useful for previewing an action before approving it.
 
 ## 🙏 Acknowledgments
 
