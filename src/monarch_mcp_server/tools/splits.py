@@ -35,6 +35,7 @@ async def get_transaction_splits(transaction_id: str) -> str:
 async def split_transaction(
     transaction_id: str,
     splits: List[Dict[str, Any]],
+    dry_run: bool = False,
 ) -> str:
     """
     Split a transaction into multiple parts with different categories/merchants.
@@ -48,11 +49,41 @@ async def split_transaction(
             - amount: The amount for this split (negative for expenses, positive for income)
             - categoryId: (optional) The category ID for this split
             - merchantName: (optional) The merchant name for this split
+        dry_run: If True, validate and echo the planned splits (including their
+            computed total) without mutating the transaction.
 
     Returns:
         The updated split information for the transaction.
     """
     try:
+        # Validate the split shape and compute the total up front so a
+        # malformed list is rejected before any mutation, and the caller can
+        # confirm the total matches the original transaction amount.
+        split_total = 0.0
+        for i, split in enumerate(splits):
+            if not isinstance(split, dict) or "amount" not in split:
+                raise ValueError(f"split #{i} must be an object with an 'amount'")
+            amount = split["amount"]
+            if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+                raise ValueError(f"split #{i} 'amount' must be a number")
+            split_total += amount
+        split_total = round(split_total, 2)
+
+        if dry_run:
+            return json_success({
+                "dry_run": True,
+                "transaction_id": transaction_id,
+                "planned_splits": splits,
+                "split_count": len(splits),
+                "split_total": split_total,
+                "message": (
+                    "Dry run — no changes made. Ensure split_total equals the "
+                    "original transaction amount before running for real."
+                    if splits
+                    else "Dry run — would remove all splits."
+                ),
+            })
+
         client = await get_monarch_client()
         result = await client.update_transaction_splits(
             transaction_id=transaction_id,
@@ -62,6 +93,7 @@ async def split_transaction(
         return json_success({
             "success": True,
             "message": f"Transaction split into {len(splits)} parts" if splits else "Splits removed from transaction",
+            "split_total": split_total,
             "splits": result,
         })
     except Exception as e:

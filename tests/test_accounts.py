@@ -134,6 +134,20 @@ class TestGetAccountBalanceHistory:
         assert result["lowest"] == 1000.0
         assert result["snapshots"][0] == {"date": "2026-04-20", "balance": 1000.0}
 
+    async def test_sorts_snapshots_by_date(self, mock_monarch_client):
+        """current/earliest/change must not depend on the API's return order."""
+        mock_monarch_client.get_account_history.return_value = [
+            {"date": "2026-04-22", "signedBalance": 1100.0},
+            {"date": "2026-04-20", "signedBalance": 1000.0},
+            {"date": "2026-04-21", "signedBalance": 1050.0},
+        ]
+        result = json.loads(await get_account_balance_history("12345"))
+        assert result["earliest_balance"] == 1000.0
+        assert result["current_balance"] == 1100.0
+        assert result["change"] == 100.0
+        assert result["snapshots"][0] == {"date": "2026-04-20", "balance": 1000.0}
+        assert result["snapshots"][-1] == {"date": "2026-04-22", "balance": 1100.0}
+
     async def test_handles_empty_history(self, mock_monarch_client):
         mock_monarch_client.get_account_history.return_value = []
         result = json.loads(await get_account_balance_history("12345"))

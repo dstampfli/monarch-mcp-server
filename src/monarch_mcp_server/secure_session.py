@@ -71,11 +71,23 @@ class SecureMonarchSession:
     # -- file-based helpers --------------------------------------------------
 
     def _save_token_file(self, token: str) -> None:
-        _TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-        # Write with owner-only permissions
-        _TOKEN_FILE.write_text(token)
-        _TOKEN_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 600
+        # Create the dir owner-only, tightening it even if it pre-existed with
+        # looser perms.
+        _TOKEN_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
         _TOKEN_DIR.chmod(stat.S_IRWXU)  # 700
+        # Open with O_CREAT and mode 0o600 so the plaintext token is never
+        # briefly world/group-readable. write_text() honors the umask (often
+        # 0o644), leaving a readable window before the chmod — a real exposure
+        # on the shared hosts where the file fallback is used.
+        fd = os.open(
+            _TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+        )
+        try:
+            os.write(fd, token.encode("utf-8"))
+        finally:
+            os.close(fd)
+        # O_CREAT's mode only applies on creation; tighten an existing file too.
+        _TOKEN_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 600
         logger.info(f"✅ Token saved to {_TOKEN_FILE}")
 
     def _load_token_file(self) -> Optional[str]:
@@ -136,6 +148,10 @@ class SecureMonarchSession:
                     "✅ Session saved securely to keyring (auth_mode=%s)",
                     auth_mode,
                 )
+                # A prior run (keyring unavailable then) may have left a token
+                # in the plaintext file fallback. Now that keyring is the
+                # source of truth, remove that stale on-disk secret.
+                self._delete_token_file()
                 self._cleanup_old_session_files()
                 return
             except Exception as e:

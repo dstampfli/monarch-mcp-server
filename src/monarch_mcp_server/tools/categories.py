@@ -387,11 +387,12 @@ async def update_category(
             variables={"input": category_input},
         )
 
-        errors = result.get("updateCategory", {}).get("errors")
+        update_result = result.get("updateCategory") or {}
+        errors = update_result.get("errors")
         if errors:
             return json_success({"success": False, "errors": errors})
 
-        cat = result.get("updateCategory", {}).get("category", {})
+        cat = update_result.get("category") or {}
         group = cat.get("group") or {}
         rollover = cat.get("rolloverPeriod")
 

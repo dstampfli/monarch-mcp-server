@@ -119,22 +119,27 @@ async def get_account_balance_history(account_id: str) -> str:
         client = await get_monarch_client()
         snapshots = await client.get_account_history(account_id=int(account_id))
 
+        # Sort oldest-first by date rather than trusting the API's order:
+        # current/earliest and the sign of `change` all depend on it, and
+        # ISO date strings sort chronologically.
+        ordered = sorted(snapshots, key=lambda s: s.get("date") or "")
+
         formatted = {
             "account_id": account_id,
-            "snapshot_count": len(snapshots),
+            "snapshot_count": len(ordered),
             "snapshots": []
         }
 
-        if snapshots:
-            balances = [s.get("signedBalance", 0) for s in snapshots if s.get("signedBalance") is not None]
+        if ordered:
+            balances = [s.get("signedBalance", 0) for s in ordered if s.get("signedBalance") is not None]
             if balances:
-                formatted["current_balance"] = balances[-1] if balances else 0
-                formatted["earliest_balance"] = balances[0] if balances else 0
+                formatted["current_balance"] = balances[-1]
+                formatted["earliest_balance"] = balances[0]
                 formatted["change"] = balances[-1] - balances[0] if len(balances) > 1 else 0
                 formatted["highest"] = max(balances)
                 formatted["lowest"] = min(balances)
 
-        for snapshot in snapshots:
+        for snapshot in ordered:
             formatted["snapshots"].append({
                 "date": snapshot.get("date"),
                 "balance": snapshot.get("signedBalance"),

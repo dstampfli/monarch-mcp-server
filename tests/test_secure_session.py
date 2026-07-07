@@ -1,5 +1,6 @@
 """Tests for keyring backend detection and secure session storage."""
 
+import stat
 import sys
 import types
 from unittest.mock import MagicMock
@@ -334,3 +335,41 @@ class TestGetAuthenticatedClient:
     def test_no_session_returns_none(self, storage_keyring):
         session, _ = storage_keyring
         assert session.get_authenticated_client() is None
+
+
+class TestFileFallbackStorage:
+    """The plaintext file fallback must be owner-only and not linger."""
+
+    @pytest.fixture
+    def token_paths(self, monkeypatch, tmp_path):
+        token_dir = tmp_path / ".monarch-mcp-server"
+        monkeypatch.setattr(ss_module, "_TOKEN_DIR", token_dir)
+        monkeypatch.setattr(ss_module, "_TOKEN_FILE", token_dir / "token")
+        return token_dir
+
+    def test_token_file_written_owner_only(self, monkeypatch, token_paths):
+        # Force the file fallback (no keyring backend).
+        monkeypatch.setattr(ss_module, "_keyring_available", lambda: False)
+        session = ss_module.SecureMonarchSession()
+        assert session._use_keyring is False
+
+        session.save_token("tok-abc")
+
+        token_file = ss_module._TOKEN_FILE
+        assert token_file.is_file()
+        assert stat.S_IMODE(token_file.stat().st_mode) == 0o600
+        assert stat.S_IMODE(token_paths.stat().st_mode) == 0o700
+
+    def test_keyring_save_removes_stale_plaintext_file(
+        self, monkeypatch, token_paths, storage_keyring
+    ):
+        session, _ = storage_keyring  # keyring-mode session
+        token_paths.mkdir(parents=True, exist_ok=True)
+        stale = token_paths / "token"
+        stale.write_text("stale-token")
+
+        session.save_session_blob(
+            token="new-tok", device_uuid="dev", auth_mode="token"
+        )
+
+        assert not stale.exists()

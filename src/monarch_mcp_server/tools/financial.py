@@ -136,10 +136,10 @@ async def get_net_worth_by_account_type(
     """
     try:
         if timeframe not in ("month", "year"):
-            return json_success({
-                "success": False,
-                "error": "timeframe must be 'month' or 'year'"
-            })
+            return json_error(
+                "get_net_worth_by_account_type",
+                ValueError("timeframe must be 'month' or 'year'"),
+            )
 
         client = await get_monarch_client()
         result = await client.get_account_snapshots_by_type(
