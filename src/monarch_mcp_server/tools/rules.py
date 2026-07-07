@@ -147,6 +147,70 @@ mutation Common_DeleteTransactionRule($id: ID!) {
 """)
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _rule_input_from_existing(rule: Dict[str, Any]) -> Dict[str, Any]:
+    """Map a rule from the GET query into UpdateTransactionRuleInput shape.
+
+    The read and write shapes differ: actions come back as nested objects
+    (``setCategoryAction {id, name}``) while the mutation takes scalars and
+    ID lists (``setCategoryAction: "cat_123"``). ``updateTransactionRuleV2``
+    is a set-style mutation — any criteria/action omitted from the input is
+    cleared — so this preserves every existing field, letting the caller
+    override only what they pass without wiping the rest of the rule.
+    """
+    data: Dict[str, Any] = {}
+
+    merchant_name = rule.get("merchantNameCriteria")
+    if merchant_name:
+        data["merchantNameCriteria"] = [
+            {"operator": c.get("operator"), "value": c.get("value")}
+            for c in merchant_name
+        ]
+
+    amount = rule.get("amountCriteria")
+    if amount:
+        value_range = amount.get("valueRange")
+        data["amountCriteria"] = {
+            "operator": amount.get("operator"),
+            "isExpense": amount.get("isExpense"),
+            "value": amount.get("value"),
+            "valueRange": (
+                {"lower": value_range.get("lower"), "upper": value_range.get("upper")}
+                if value_range
+                else None
+            ),
+        }
+
+    if rule.get("accountIds"):
+        data["accountIds"] = rule["accountIds"]
+
+    set_category = rule.get("setCategoryAction")
+    if set_category:
+        data["setCategoryAction"] = set_category.get("id")
+
+    set_merchant = rule.get("setMerchantAction")
+    if set_merchant:
+        data["setMerchantAction"] = set_merchant.get("name")
+
+    add_tags = rule.get("addTagsAction")
+    if add_tags:
+        data["addTagsAction"] = [t.get("id") for t in add_tags]
+
+    hide = rule.get("setHideFromReportsAction")
+    if hide is not None:
+        data["setHideFromReportsAction"] = hide
+
+    review = rule.get("reviewStatusAction")
+    if review:
+        data["reviewStatusAction"] = review
+
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 
@@ -347,10 +411,32 @@ async def update_transaction_rule(
     try:
         client = await get_monarch_client()
 
-        rule_input: Dict[str, Any] = {
-            "id": rule_id,
-            "applyToExistingTransactions": apply_to_existing,
-        }
+        # updateTransactionRuleV2 is a set-style mutation: any criteria or
+        # action left out of the input is cleared. Fetch the current rule and
+        # start from its existing fields so a single-field edit doesn't wipe
+        # the rest of the rule.
+        existing = await client.gql_call(
+            operation="GetTransactionRules",
+            graphql_query=GET_TRANSACTION_RULES_QUERY,
+            variables={},
+        )
+        current = next(
+            (
+                r
+                for r in existing.get("transactionRules", [])
+                if r.get("id") == rule_id
+            ),
+            None,
+        )
+        if current is None:
+            return json_error(
+                "update_transaction_rule",
+                ValueError(f"No rule found with id {rule_id!r}"),
+            )
+
+        rule_input: Dict[str, Any] = _rule_input_from_existing(current)
+        rule_input["id"] = rule_id
+        rule_input["applyToExistingTransactions"] = apply_to_existing
 
         # Accept either a single merchant value or a list of values. When a
         # list is given, build one criterion per value sharing the operator

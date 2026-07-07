@@ -5,9 +5,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from monarchmoney import RequireMFAException
+from monarchmoney import CaptchaRequiredException, RequireMFAException
 
 from monarch_mcp_server import auth
+from monarch_mcp_server.monarch_auth import EmailOtpRequiredException
 
 
 def make_ctx(*elicit_results):
@@ -35,27 +36,84 @@ def no_session_save():
 class TestLoginInteractive:
     def test_happy_path_no_mfa(self, no_session_save):
         mm = AsyncMock()
-        with patch("monarch_mcp_server.auth.MonarchMoney", return_value=mm):
+        with patch(
+            "monarch_mcp_server.auth.login_with_current_auth",
+            AsyncMock(return_value=mm),
+        ) as login:
             ctx = make_ctx(accept(email="a@b.com", password="pw"))
             result = asyncio.run(auth.login_interactive(ctx))
         assert "Logged in" in result
-        mm.login.assert_awaited_once()
+        # Routed through the compat layer (sets trusted_device, headers, etc.).
+        login.assert_awaited_once_with("a@b.com", "pw")
         no_session_save.save_authenticated_session.assert_called_once_with(mm)
 
     def test_mfa_required(self, no_session_save):
         mm = AsyncMock()
-        mm.login.side_effect = RequireMFAException("mfa")
-        with patch("monarch_mcp_server.auth.MonarchMoney", return_value=mm):
+        login = AsyncMock(side_effect=[RequireMFAException("mfa"), mm])
+        with patch("monarch_mcp_server.auth.login_with_current_auth", login):
             ctx = make_ctx(
                 accept(email="a@b.com", password="pw"),
                 accept(mfa_code="123456"),
             )
             result = asyncio.run(auth.login_interactive(ctx))
         assert "Logged in" in result
-        mm.multi_factor_authenticate.assert_awaited_once_with(
-            "a@b.com", "pw", "123456"
-        )
+        # Retried with the MFA code (and no email OTP).
+        assert login.await_args_list[-1].args == ("a@b.com", "pw")
+        assert login.await_args_list[-1].kwargs == {
+            "email_otp": None,
+            "mfa_code": "123456",
+        }
         no_session_save.save_authenticated_session.assert_called_once_with(mm)
+
+    def test_email_otp_required(self, no_session_save):
+        mm = AsyncMock()
+        login = AsyncMock(side_effect=[EmailOtpRequiredException(), mm])
+        with patch("monarch_mcp_server.auth.login_with_current_auth", login):
+            ctx = make_ctx(
+                accept(email="a@b.com", password="pw"),
+                accept(email_otp="000111"),
+            )
+            result = asyncio.run(auth.login_interactive(ctx))
+        assert "Logged in" in result
+        assert login.await_args_list[-1].kwargs == {"email_otp": "000111"}
+        no_session_save.save_authenticated_session.assert_called_once_with(mm)
+
+    def test_email_otp_then_mfa(self, no_session_save):
+        mm = AsyncMock()
+        login = AsyncMock(
+            side_effect=[EmailOtpRequiredException(), RequireMFAException("mfa"), mm]
+        )
+        with patch("monarch_mcp_server.auth.login_with_current_auth", login):
+            ctx = make_ctx(
+                accept(email="a@b.com", password="pw"),
+                accept(email_otp="000111"),
+                accept(mfa_code="123456"),
+            )
+            result = asyncio.run(auth.login_interactive(ctx))
+        assert "Logged in" in result
+        assert login.await_args_list[-1].kwargs == {
+            "email_otp": "000111",
+            "mfa_code": "123456",
+        }
+        no_session_save.save_authenticated_session.assert_called_once_with(mm)
+
+    def test_captcha_returns_cookie_hint(self, no_session_save):
+        login = AsyncMock(side_effect=CaptchaRequiredException("blocked"))
+        with patch("monarch_mcp_server.auth.login_with_current_auth", login):
+            ctx = make_ctx(accept(email="a@b.com", password="pw"))
+            result = asyncio.run(auth.login_interactive(ctx))
+        assert "CAPTCHA" in result
+        assert "login_setup.py" in result
+        no_session_save.save_authenticated_session.assert_not_called()
+
+    def test_login_failure_reported(self, no_session_save):
+        login = AsyncMock(side_effect=Exception("bad credentials"))
+        with patch("monarch_mcp_server.auth.login_with_current_auth", login):
+            ctx = make_ctx(accept(email="a@b.com", password="pw"))
+            result = asyncio.run(auth.login_interactive(ctx))
+        assert "Login failed" in result
+        assert "bad credentials" in result
+        no_session_save.save_authenticated_session.assert_not_called()
 
     def test_user_cancels_initial_form(self, no_session_save):
         ctx = make_ctx(cancel())
@@ -64,9 +122,8 @@ class TestLoginInteractive:
         no_session_save.save_authenticated_session.assert_not_called()
 
     def test_user_cancels_mfa(self, no_session_save):
-        mm = AsyncMock()
-        mm.login.side_effect = RequireMFAException("mfa")
-        with patch("monarch_mcp_server.auth.MonarchMoney", return_value=mm):
+        login = AsyncMock(side_effect=RequireMFAException("mfa"))
+        with patch("monarch_mcp_server.auth.login_with_current_auth", login):
             ctx = make_ctx(accept(email="a@b.com", password="pw"), cancel())
             result = asyncio.run(auth.login_interactive(ctx))
         assert result == "Login cancelled."

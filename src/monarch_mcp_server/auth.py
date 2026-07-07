@@ -6,10 +6,16 @@ the protocol — they never appear in tool arguments or the model's context.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from mcp.server.fastmcp import Context
-from monarchmoney import MonarchMoney, RequireMFAException
+from monarchmoney import CaptchaRequiredException, MonarchMoney, RequireMFAException
 from pydantic import BaseModel, Field
 
+from monarch_mcp_server.monarch_auth import (
+    EmailOtpRequiredException,
+    login_with_current_auth,
+)
 from monarch_mcp_server.secure_session import secure_session
 
 
@@ -36,6 +42,12 @@ class MFAForm(BaseModel):
     mfa_code: str = Field(description="Monarch Money MFA code")
 
 
+class EmailOtpForm(BaseModel):
+    email_otp: str = Field(
+        description="The verification code Monarch emailed to your account"
+    )
+
+
 class TokenForm(BaseModel):
     token: str = Field(
         description=(
@@ -45,31 +57,71 @@ class TokenForm(BaseModel):
     )
 
 
+async def _login_with_mfa(
+    ctx: Context,
+    email: str,
+    password: str,
+    *,
+    email_otp: Optional[str] = None,
+) -> Optional[MonarchMoney]:
+    """Elicit an MFA code and complete login, or None if the user cancels."""
+    mfa_result = await ctx.elicit(
+        message="Enter your Monarch Money MFA code.", schema=MFAForm
+    )
+    if mfa_result.action != "accept":
+        return None
+    return await login_with_current_auth(
+        email, password, email_otp=email_otp, mfa_code=mfa_result.data.mfa_code
+    )
+
+
 async def login_interactive(ctx: Context) -> str:
     if not _elicit_supported(ctx):
         return _UPGRADE_HINT
     form_result = await ctx.elicit(message="Sign in to Monarch Money.", schema=LoginForm)
     if form_result.action != "accept":
         return "Login cancelled."
-    form = form_result.data
+    email = form_result.data.email
+    password = form_result.data.password
 
-    mm = MonarchMoney()
+    # Route through login_with_current_auth so the login payload sets
+    # trusted_device=True (long-lived token), injects the current web headers,
+    # captures the device-uuid needed to reload the session, and rejects
+    # JWT/short-lived tokens — none of which a raw MonarchMoney().login() does.
+    mm: Optional[MonarchMoney] = None
     try:
-        await mm.login(
-            form.email,
-            form.password,
-            use_saved_session=False,
-            save_session=False,
+        try:
+            mm = await login_with_current_auth(email, password)
+        except EmailOtpRequiredException:
+            otp_result = await ctx.elicit(
+                message="Monarch emailed you a verification code. Enter it "
+                "(this can happen for a new session even with MFA off).",
+                schema=EmailOtpForm,
+            )
+            if otp_result.action != "accept":
+                return "Login cancelled."
+            email_otp = otp_result.data.email_otp
+            try:
+                mm = await login_with_current_auth(
+                    email, password, email_otp=email_otp
+                )
+            except RequireMFAException:
+                mm = await _login_with_mfa(
+                    ctx, email, password, email_otp=email_otp
+                )
+        except RequireMFAException:
+            mm = await _login_with_mfa(ctx, email, password)
+    except CaptchaRequiredException:
+        return (
+            "Programmatic login is blocked by Cloudflare CAPTCHA. Run "
+            "`python login_setup.py` from the repo and choose the browser-cookie "
+            "option instead."
         )
-    except RequireMFAException:
-        mfa_result = await ctx.elicit(
-            message="Enter your Monarch Money MFA code.", schema=MFAForm
-        )
-        if mfa_result.action != "accept":
-            return "Login cancelled."
-        await mm.multi_factor_authenticate(
-            form.email, form.password, mfa_result.data.mfa_code
-        )
+    except Exception as e:  # LoginFailedException, network errors, etc.
+        return f"Login failed: {e}"
+
+    if mm is None:
+        return "Login cancelled."
 
     secure_session.save_authenticated_session(mm)
     return "Logged in. Session saved to system keyring."
