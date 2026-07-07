@@ -99,11 +99,23 @@ def format_budget_data(budget_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         category_id = (category_budget.get("category") or {}).get("id")
         category_info = category_lookup.get(category_id, {})
         for monthly_amount in category_budget.get("monthlyAmounts", []):
+            # Set-aside / rollover / non-monthly categories carry their planned
+            # amount in plannedSetAsideAmount (their plannedCashFlowAmount is
+            # typically 0), so `planned` must combine both or those categories
+            # would misreport as unbudgeted. Keep the components too.
+            cashflow = monthly_amount.get("plannedCashFlowAmount")
+            set_aside = monthly_amount.get("plannedSetAsideAmount")
+            if cashflow is None and set_aside is None:
+                planned = None
+            else:
+                planned = (cashflow or 0) + (set_aside or 0)
             budget_rows.append(
                 {
                     "id": category_id,
                     "name": category_info.get("name"),
-                    "planned": monthly_amount.get("plannedCashFlowAmount"),
+                    "planned": planned,
+                    "planned_cashflow": cashflow,
+                    "planned_set_aside": set_aside,
                     "actual": monthly_amount.get("actualAmount"),
                     "remaining": monthly_amount.get("remainingAmount"),
                     "category_group": category_info.get("category_group"),

@@ -210,6 +210,42 @@ def _rule_input_from_existing(rule: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def _build_amount_criteria(
+    operator: str,
+    is_expense: bool,
+    value: Optional[float],
+    lower: Optional[float],
+    upper: Optional[float],
+) -> Dict[str, Any]:
+    """Build an amountCriteria payload, validating operator/argument pairing.
+
+    ``between`` needs a ``valueRange`` (lower + upper) and no scalar ``value``;
+    every other operator needs a scalar ``value`` and no range. Raises
+    ValueError on a mismatch so the tool reports a clear error instead of
+    silently sending a criterion the API rejects (or that matches nothing).
+    """
+    if operator == "between":
+        if lower is None or upper is None:
+            raise ValueError(
+                "amount_operator='between' requires both amount_value_lower "
+                "and amount_value_upper"
+            )
+        return {
+            "operator": "between",
+            "isExpense": is_expense,
+            "value": None,
+            "valueRange": {"lower": lower, "upper": upper},
+        }
+    if value is None:
+        raise ValueError(f"amount_operator={operator!r} requires amount_value")
+    return {
+        "operator": operator,
+        "isExpense": is_expense,
+        "value": value,
+        "valueRange": None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
@@ -275,6 +311,8 @@ async def create_transaction_rule(
     merchant_criteria_values: Optional[List[str]] = None,
     amount_operator: Optional[str] = None,
     amount_value: Optional[float] = None,
+    amount_value_lower: Optional[float] = None,
+    amount_value_upper: Optional[float] = None,
     amount_is_expense: bool = True,
     set_category_id: Optional[str] = None,
     set_merchant_name: Optional[str] = None,
@@ -293,7 +331,9 @@ async def create_transaction_rule(
         merchant_criteria_operator: How to match merchant ("eq", "contains")
         merchant_criteria_value: Merchant name/pattern to match
         amount_operator: Amount comparison ("gt", "lt", "eq", "between")
-        amount_value: Amount threshold value
+        amount_value: Amount threshold value (for "gt"/"lt"/"eq")
+        amount_value_lower: Lower bound for the "between" operator
+        amount_value_upper: Upper bound for the "between" operator
         amount_is_expense: Whether amount is expense (negative) or income
         set_category_id: Category ID to assign (use get_categories for IDs)
         set_merchant_name: Merchant name to set on matching transactions
@@ -333,13 +373,14 @@ async def create_transaction_rule(
                 {"operator": _merchant_op, "value": v} for v in _merchant_values
             ]
 
-        if amount_operator and amount_value is not None:
-            rule_input["amountCriteria"] = {
-                "operator": amount_operator,
-                "isExpense": amount_is_expense,
-                "value": amount_value,
-                "valueRange": None,
-            }
+        if amount_operator:
+            rule_input["amountCriteria"] = _build_amount_criteria(
+                amount_operator,
+                amount_is_expense,
+                amount_value,
+                amount_value_lower,
+                amount_value_upper,
+            )
 
         if account_ids:
             rule_input["accountIds"] = account_ids
@@ -378,6 +419,8 @@ async def update_transaction_rule(
     merchant_criteria_values: Optional[List[str]] = None,
     amount_operator: Optional[str] = None,
     amount_value: Optional[float] = None,
+    amount_value_lower: Optional[float] = None,
+    amount_value_upper: Optional[float] = None,
     amount_is_expense: bool = True,
     set_category_id: Optional[str] = None,
     set_merchant_name: Optional[str] = None,
@@ -395,7 +438,9 @@ async def update_transaction_rule(
         merchant_criteria_operator: How to match merchant ("eq", "contains")
         merchant_criteria_value: Merchant name/pattern to match
         amount_operator: Amount comparison ("gt", "lt", "eq", "between")
-        amount_value: Amount threshold value
+        amount_value: Amount threshold value (for "gt"/"lt"/"eq")
+        amount_value_lower: Lower bound for the "between" operator
+        amount_value_upper: Upper bound for the "between" operator
         amount_is_expense: Whether amount is expense (negative) or income
         set_category_id: Category ID to assign
         set_merchant_name: Merchant name to set
@@ -450,13 +495,14 @@ async def update_transaction_rule(
                 {"operator": _merchant_op, "value": v} for v in _merchant_values
             ]
 
-        if amount_operator and amount_value is not None:
-            rule_input["amountCriteria"] = {
-                "operator": amount_operator,
-                "isExpense": amount_is_expense,
-                "value": amount_value,
-                "valueRange": None,
-            }
+        if amount_operator:
+            rule_input["amountCriteria"] = _build_amount_criteria(
+                amount_operator,
+                amount_is_expense,
+                amount_value,
+                amount_value_lower,
+                amount_value_upper,
+            )
 
         if account_ids:
             rule_input["accountIds"] = account_ids

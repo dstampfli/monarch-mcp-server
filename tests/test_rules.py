@@ -230,6 +230,49 @@ class TestCreateTransactionRule:
         assert [c["value"] for c in criteria] == ["fnbo", "slice"]
         assert all(c["operator"] == "contains" for c in criteria)
 
+    @patch('monarch_mcp_server.tools.rules.get_monarch_client')
+    async def test_create_rule_between_amount(self, mock_get_client):
+        """The 'between' operator sends a valueRange, not a null one."""
+        mock_client = AsyncMock()
+        mock_client.gql_call.return_value = {
+            "createTransactionRuleV2": {"errors": None}
+        }
+        mock_get_client.return_value = mock_client
+
+        result = await create_transaction_rule(
+            amount_operator="between",
+            amount_value_lower=10.0,
+            amount_value_upper=50.0,
+            set_category_id="cat_x",
+        )
+
+        data = json.loads(result)
+        assert data["success"] is True
+
+        criteria = mock_client.gql_call.call_args.kwargs["variables"]["input"][
+            "amountCriteria"
+        ]
+        assert criteria["operator"] == "between"
+        assert criteria["value"] is None
+        assert criteria["valueRange"] == {"lower": 10.0, "upper": 50.0}
+
+    @patch('monarch_mcp_server.tools.rules.get_monarch_client')
+    async def test_create_rule_between_requires_bounds(self, mock_get_client):
+        """'between' without both bounds errors instead of silently matching nothing."""
+        mock_client = AsyncMock()
+        mock_get_client.return_value = mock_client
+
+        result = await create_transaction_rule(
+            amount_operator="between",
+            amount_value=25.0,
+            set_category_id="cat_x",
+        )
+
+        data = json.loads(result)
+        assert data["error"] is True
+        assert "between" in data["message"]
+        mock_client.gql_call.assert_not_called()
+
 
 class TestUpdateTransactionRule:
     """Tests for update_transaction_rule tool."""
@@ -384,6 +427,33 @@ class TestUpdateTransactionRule:
         call_args = mock_client.gql_call.call_args
         criteria = call_args.kwargs["variables"]["input"]["merchantNameCriteria"]
         assert [c["value"] for c in criteria] == ["courtyard", "hotel"]
+
+    @patch('monarch_mcp_server.tools.rules.get_monarch_client')
+    async def test_update_rule_between_amount(self, mock_get_client):
+        """Updating to a 'between' rule sends a valueRange."""
+        mock_client = AsyncMock()
+        mock_client.gql_call.side_effect = [
+            {"transactionRules": [self._existing_rule()]},
+            {"updateTransactionRuleV2": {"errors": None}},
+        ]
+        mock_get_client.return_value = mock_client
+
+        result = await update_transaction_rule(
+            rule_id="rule_123",
+            amount_operator="between",
+            amount_value_lower=10.0,
+            amount_value_upper=50.0,
+        )
+
+        data = json.loads(result)
+        assert data["success"] is True
+
+        criteria = mock_client.gql_call.call_args.kwargs["variables"]["input"][
+            "amountCriteria"
+        ]
+        assert criteria["operator"] == "between"
+        assert criteria["value"] is None
+        assert criteria["valueRange"] == {"lower": 10.0, "upper": 50.0}
 
 
 class TestDeleteTransactionRule:

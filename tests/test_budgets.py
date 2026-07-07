@@ -15,11 +15,50 @@ class TestGetBudgets:
             "id": "cat-1",
             "name": "Groceries",
             "planned": 500.00,
+            "planned_cashflow": 500.00,
+            "planned_set_aside": 0.00,
             "actual": 320.00,
             "remaining": 180.00,
             "category_group": "Food",
             "month": "2026-03-01",
         }
+
+    def test_planned_combines_set_aside(self):
+        """Set-aside categories (cashflow 0) must report their set-aside as planned."""
+        from monarch_mcp_server.tools.budgets import format_budget_data
+
+        rows = format_budget_data(
+            {
+                "budgetData": {
+                    "monthlyAmountsByCategory": [
+                        {
+                            "category": {"id": "cat-goal"},
+                            "monthlyAmounts": [
+                                {
+                                    "month": "2026-03-01",
+                                    "plannedCashFlowAmount": 0.00,
+                                    "plannedSetAsideAmount": 150.00,
+                                    "actualAmount": 0.00,
+                                    "remainingAmount": 150.00,
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "categoryGroups": [
+                    {
+                        "id": "grp-1",
+                        "name": "Goals",
+                        "type": "expense",
+                        "categories": [{"id": "cat-goal", "name": "Vacation Fund"}],
+                    }
+                ],
+            }
+        )
+        assert len(rows) == 1
+        assert rows[0]["planned"] == 150.00
+        assert rows[0]["planned_cashflow"] == 0.00
+        assert rows[0]["planned_set_aside"] == 150.00
 
     async def test_passes_explicit_date_params(self, mock_monarch_client):
         await get_budgets(start_date="2026-03-01", end_date="2026-03-31")
