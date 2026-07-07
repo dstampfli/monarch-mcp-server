@@ -991,34 +991,76 @@ async def get_transactions_needing_review(
     try:
         client = await get_monarch_client()
 
-        filters: Dict[str, Any] = {"limit": limit}
-
+        base_filters: Dict[str, Any] = {}
         if days:
             end = datetime.now().strftime("%Y-%m-%d")
             start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-            filters["start_date"] = start
-            filters["end_date"] = end
-
+            base_filters["start_date"] = start
+            base_filters["end_date"] = end
         if account_id:
-            filters["account_ids"] = [account_id]
-
+            base_filters["account_ids"] = [account_id]
         if without_notes_only:
-            filters["has_notes"] = False
+            base_filters["has_notes"] = False
 
-        transactions_data = await client.get_transactions(**filters)
-
-        transaction_list = []
-        for txn in transactions_data.get("allTransactions", {}).get("results", []):
+        def _matches(txn: Dict[str, Any]) -> bool:
             if needs_review and not txn.get("needsReview", False):
-                continue
-
+                return False
             if uncategorized_only:
                 category = txn.get("category")
                 if category and category.get("id"):
-                    continue
+                    return False
+            return True
 
-            transaction_list.append(format_transaction(txn))
+        # needsReview / uncategorized have no server-side filter, so a single
+        # limit-sized fetch would silently drop matches sitting past the first
+        # page. Page through until we collect `limit` matches or exhaust the
+        # source, bounding total work with a scan cap.
+        page_size = 100
+        scan_cap = max(limit * 20, 500)
+        matches: List[Dict[str, Any]] = []
+        offset = 0
+        scanned = 0
+        source_exhausted = False
+        while len(matches) < limit and scanned < scan_cap:
+            page = await client.get_transactions(
+                limit=page_size, offset=offset, **base_filters
+            )
+            results = page.get("allTransactions", {}).get("results", [])
+            scanned += len(results)
+            for txn in results:
+                if _matches(txn):
+                    matches.append(format_transaction(txn))
+                    if len(matches) >= limit:
+                        break
+            if len(results) < page_size:
+                source_exhausted = True
+                break
+            offset += page_size
 
-        return json_success(transaction_list)
+        args_summary = {
+            "needs_review": needs_review,
+            "days": days,
+            "uncategorized_only": uncategorized_only,
+            "without_notes_only": without_notes_only,
+            "limit": limit,
+            "account_id": account_id,
+        }
+        # When the source is exhausted we know the exact match total; otherwise
+        # leave it unknown so the envelope reports truncated on a full page.
+        total_count = len(matches) if source_exhausted else None
+        search_info = {
+            "strategy": "review_scan",
+            "scanned_count": scanned,
+            "scan_capped": not source_exhausted and len(matches) < limit,
+        }
+        return json_success(
+            tool_response_envelope(
+                "get_transactions_needing_review",
+                args_summary,
+                matches,
+                total_count=total_count,
+                search_info=search_info,
+            )
+        )
     except Exception as e:
         return json_error("get_transactions_needing_review", e)

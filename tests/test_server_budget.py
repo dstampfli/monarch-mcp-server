@@ -42,6 +42,8 @@ def test_format_budget_data_returns_current_month_category_rows():
             "id": "cat-1",
             "name": "Groceries",
             "planned": -100,
+            "planned_cashflow": -100,
+            "planned_set_aside": 0,
             "actual": -25,
             "remaining": -75,
             "category_group": "Food",
