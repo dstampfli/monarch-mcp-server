@@ -4,12 +4,19 @@ import json
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Mock the monarchmoney module before any monarch_mcp_server imports
+# Mock the monarchmoney module before any monarch_mcp_server imports.
+# The exception types must be real, *distinct* Exception subclasses: the auth
+# flow catches RequireMFAException / CaptchaRequiredException / EmailOtp
+# separately, so collapsing them to a bare Exception would make one except
+# clause swallow the others (and MagicMocks aren't catchable at all).
 mm_mock = MagicMock()
 mm_mock.MonarchMoney = MagicMock
-mm_mock.RequireMFAException = Exception
+mm_mock.RequireMFAException = type("RequireMFAException", (Exception,), {})
+mm_mock.CaptchaRequiredException = type("CaptchaRequiredException", (Exception,), {})
 sys.modules.setdefault("monarchmoney", mm_mock)
-sys.modules.setdefault("monarchmoney.monarchmoney", MagicMock())
+mm_submodule = MagicMock()
+mm_submodule.LoginFailedException = type("LoginFailedException", (Exception,), {})
+sys.modules.setdefault("monarchmoney.monarchmoney", mm_submodule)
 
 import pytest
 

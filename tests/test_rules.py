@@ -234,13 +234,39 @@ class TestCreateTransactionRule:
 class TestUpdateTransactionRule:
     """Tests for update_transaction_rule tool."""
 
+    @staticmethod
+    def _existing_rule(rule_id="rule_123", **overrides):
+        """A rule as returned by the GET query, for the read-merge fetch."""
+        rule = {
+            "id": rule_id,
+            "order": 0,
+            "merchantCriteriaUseOriginalStatement": False,
+            "merchantCriteria": None,
+            "merchantNameCriteria": None,
+            "originalStatementCriteria": None,
+            "amountCriteria": None,
+            "categoryIds": None,
+            "accountIds": None,
+            "setCategoryAction": None,
+            "setMerchantAction": None,
+            "addTagsAction": None,
+            "linkGoalAction": None,
+            "setHideFromReportsAction": False,
+            "reviewStatusAction": None,
+            "recentApplicationCount": 0,
+            "lastAppliedAt": None,
+        }
+        rule.update(overrides)
+        return rule
+
     @patch('monarch_mcp_server.tools.rules.get_monarch_client')
     async def test_update_rule_success(self, mock_get_client):
         """Test successful rule update."""
         mock_client = AsyncMock()
-        mock_client.gql_call.return_value = {
-            "updateTransactionRuleV2": {"errors": None}
-        }
+        mock_client.gql_call.side_effect = [
+            {"transactionRules": [self._existing_rule()]},
+            {"updateTransactionRuleV2": {"errors": None}},
+        ]
         mock_get_client.return_value = mock_client
 
         result = await update_transaction_rule(
@@ -259,17 +285,16 @@ class TestUpdateTransactionRule:
 
     @patch('monarch_mcp_server.tools.rules.get_monarch_client')
     async def test_update_rule_error(self, mock_get_client):
-        """Test error handling when update fails."""
+        """Test error handling when the mutation returns errors."""
         mock_client = AsyncMock()
-        mock_client.gql_call.return_value = {
-            "updateTransactionRuleV2": {
-                "errors": {"message": "Rule not found"}
-            }
-        }
+        mock_client.gql_call.side_effect = [
+            {"transactionRules": [self._existing_rule("rule_123")]},
+            {"updateTransactionRuleV2": {"errors": {"message": "Rule not found"}}},
+        ]
         mock_get_client.return_value = mock_client
 
         result = await update_transaction_rule(
-            rule_id="invalid_rule",
+            rule_id="rule_123",
             merchant_criteria_operator="eq",
             merchant_criteria_value="test"
         )
@@ -278,12 +303,72 @@ class TestUpdateTransactionRule:
         assert data["success"] is False
 
     @patch('monarch_mcp_server.tools.rules.get_monarch_client')
+    async def test_update_rule_not_found(self, mock_get_client):
+        """A rule_id that doesn't exist errors out rather than wiping."""
+        mock_client = AsyncMock()
+        mock_client.gql_call.return_value = {"transactionRules": []}
+        mock_get_client.return_value = mock_client
+
+        result = await update_transaction_rule(
+            rule_id="missing_rule",
+            set_category_id="cat_1",
+        )
+
+        data = json.loads(result)
+        assert data["error"] is True
+        assert "missing_rule" in data["message"]
+        # Only the read happened; no mutation was attempted.
+        assert mock_client.gql_call.call_count == 1
+
+    @patch('monarch_mcp_server.tools.rules.get_monarch_client')
+    async def test_update_rule_preserves_existing_fields(self, mock_get_client):
+        """A single-field edit must not clear the rule's other criteria/actions."""
+        existing = self._existing_rule(
+            "rule_123",
+            merchantNameCriteria=[{"operator": "contains", "value": "netflix"}],
+            amountCriteria={
+                "operator": "gt",
+                "isExpense": True,
+                "value": 10.0,
+                "valueRange": None,
+            },
+            addTagsAction=[{"id": "tag_1", "name": "Sub", "color": "#000"}],
+            setCategoryAction={"id": "cat_old", "name": "Old", "icon": "x"},
+        )
+        mock_client = AsyncMock()
+        mock_client.gql_call.side_effect = [
+            {"transactionRules": [existing]},
+            {"updateTransactionRuleV2": {"errors": None}},
+        ]
+        mock_get_client.return_value = mock_client
+
+        # Change only the category.
+        result = await update_transaction_rule(
+            rule_id="rule_123", set_category_id="cat_new"
+        )
+
+        data = json.loads(result)
+        assert data["success"] is True
+
+        sent = mock_client.gql_call.call_args.kwargs["variables"]["input"]
+        # Overridden field.
+        assert sent["setCategoryAction"] == "cat_new"
+        # Preserved fields — mapped from the read shape into the write shape.
+        assert sent["merchantNameCriteria"] == [
+            {"operator": "contains", "value": "netflix"}
+        ]
+        assert sent["amountCriteria"]["operator"] == "gt"
+        assert sent["amountCriteria"]["value"] == 10.0
+        assert sent["addTagsAction"] == ["tag_1"]
+
+    @patch('monarch_mcp_server.tools.rules.get_monarch_client')
     async def test_update_rule_with_multiple_merchant_values(self, mock_get_client):
         """Test updating a rule to match multiple merchants in one rule."""
         mock_client = AsyncMock()
-        mock_client.gql_call.return_value = {
-            "updateTransactionRuleV2": {"errors": None}
-        }
+        mock_client.gql_call.side_effect = [
+            {"transactionRules": [self._existing_rule()]},
+            {"updateTransactionRuleV2": {"errors": None}},
+        ]
         mock_get_client.return_value = mock_client
 
         result = await update_transaction_rule(
