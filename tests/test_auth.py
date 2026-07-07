@@ -133,31 +133,44 @@ class TestLoginInteractive:
 class TestLoginWithTokenInteractive:
     def test_happy_path(self, no_session_save):
         mm = AsyncMock()
-        with patch("monarch_mcp_server.auth.MonarchMoney", return_value=mm):
+        with patch("monarch_mcp_server.auth.create_monarch_client", return_value=mm):
             ctx = make_ctx(accept(token="raw-token"))
             result = asyncio.run(auth.login_with_token_interactive(ctx))
         assert "saved" in result.lower()
         mm.get_subscription_details.assert_awaited_once()
-        no_session_save.save_token.assert_called_once_with("raw-token")
+        # Persisted via save_authenticated_session so the device-uuid is captured.
+        no_session_save.save_authenticated_session.assert_called_once_with(mm)
 
     def test_strips_whitespace(self, no_session_save):
         mm = AsyncMock()
-        with patch("monarch_mcp_server.auth.MonarchMoney", return_value=mm):
+        with patch(
+            "monarch_mcp_server.auth.create_monarch_client", return_value=mm
+        ) as create:
             ctx = make_ctx(accept(token="  token-with-spaces  "))
             asyncio.run(auth.login_with_token_interactive(ctx))
-        no_session_save.save_token.assert_called_once_with("token-with-spaces")
+        create.assert_called_once_with(token="token-with-spaces")
+        no_session_save.save_authenticated_session.assert_called_once_with(mm)
+
+    def test_jwt_token_rejected(self, no_session_save):
+        # header.payload.signature shape → short-lived features token.
+        ctx = make_ctx(accept(token="aaa.bbb.ccc"))
+        with patch("monarch_mcp_server.auth.create_monarch_client") as create:
+            result = asyncio.run(auth.login_with_token_interactive(ctx))
+        assert "JWT" in result
+        create.assert_not_called()
+        no_session_save.save_authenticated_session.assert_not_called()
 
     def test_empty_token_rejected(self, no_session_save):
         ctx = make_ctx(accept(token="   "))
         result = asyncio.run(auth.login_with_token_interactive(ctx))
         assert "Empty" in result
-        no_session_save.save_token.assert_not_called()
+        no_session_save.save_authenticated_session.assert_not_called()
 
     def test_user_cancels(self, no_session_save):
         ctx = make_ctx(cancel())
         result = asyncio.run(auth.login_with_token_interactive(ctx))
         assert result == "Login cancelled."
-        no_session_save.save_token.assert_not_called()
+        no_session_save.save_authenticated_session.assert_not_called()
 
 
 class TestLogout:

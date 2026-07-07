@@ -248,11 +248,12 @@ async def update_merchant(
             variables={"input": merchant_input},
         )
 
-        errors = result.get("updateMerchant", {}).get("errors")
+        update_result = result.get("updateMerchant") or {}
+        errors = update_result.get("errors")
         if errors:
             return json_success({"success": False, "errors": errors})
 
-        merchant = result.get("updateMerchant", {}).get("merchant", {})
+        merchant = update_result.get("merchant") or {}
         stream = merchant.get("recurringTransactionStream")
         return json_success(
             {
@@ -319,11 +320,12 @@ async def review_recurring_stream(
             },
         )
 
-        errors = result.get("reviewRecurringStream", {}).get("errors")
+        review_result = result.get("reviewRecurringStream") or {}
+        errors = review_result.get("errors")
         if errors:
             return json_success({"success": False, "errors": errors})
 
-        stream = result.get("reviewRecurringStream", {}).get("stream", {})
+        stream = review_result.get("stream") or {}
         return json_success(
             {
                 "success": True,

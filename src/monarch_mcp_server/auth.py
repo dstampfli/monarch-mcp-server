@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 
 from monarch_mcp_server.monarch_auth import (
     EmailOtpRequiredException,
+    _looks_like_jwt,
+    create_monarch_client,
     login_with_current_auth,
 )
 from monarch_mcp_server.secure_session import secure_session
@@ -139,10 +141,22 @@ async def login_with_token_interactive(ctx: Context) -> str:
     token = form_result.data.token.strip()
     if not token:
         return "Empty token — aborting."
+    if _looks_like_jwt(token):
+        return (
+            "That looks like a short-lived JWT (features) token, which expires "
+            "within the hour. Paste the long-lived session token, or run "
+            "`python login_setup.py` and use the browser-cookie option."
+        )
 
-    mm = MonarchMoney(token=token)
-    await mm.get_subscription_details()
-    secure_session.save_token(token)
+    # Build via create_monarch_client so the client carries a device-uuid;
+    # save_authenticated_session then persists token + device_uuid together,
+    # so a reload presents the same device-uuid instead of a fresh random one.
+    mm = create_monarch_client(token=token)
+    try:
+        await mm.get_subscription_details()
+    except Exception as e:
+        return f"Token rejected by Monarch: {e}"
+    secure_session.save_authenticated_session(mm)
     return "Session token saved to system keyring."
 
 

@@ -411,7 +411,11 @@ async def get_transactions(
                     "fallback_reason": None,
                 }
 
-            scan_limit = max(limit, search_scan_limit)
+            # Scan far enough to cover the requested page: paging into
+            # matches[offset:offset+limit] over a from-zero scan means a deep
+            # offset would otherwise fall past the scanned window and return
+            # empty even when matches exist.
+            scan_limit = max(limit, search_scan_limit, offset + limit)
             fallback_filters = {
                 key: value for key, value in filters.items() if key != "search"
             }
@@ -432,6 +436,9 @@ async def get_transactions(
             ]
             total_matches = len(matches)
             page = matches[offset : offset + limit]
+            # If the scan filled to the cap, more rows exist beyond it, so
+            # total_matches is only a lower bound — surface that to callers.
+            scan_capped = len(fallback_results) >= scan_limit
             return {
                 **fallback_data,
                 "allTransactions": {
@@ -444,6 +451,8 @@ async def get_transactions(
                 "fallback_reason": reason,
                 "scan_limit": scan_limit,
                 "scanned_count": len(fallback_results),
+                "scan_capped": scan_capped,
+                "total_matches_is_lower_bound": scan_capped,
                 "server_error": (
                     format_exception(original_error) if original_error else None
                 ),

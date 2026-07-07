@@ -231,6 +231,21 @@ class TestCreateTransactionRule:
         assert all(c["operator"] == "contains" for c in criteria)
 
     @patch('monarch_mcp_server.tools.rules.get_monarch_client')
+    async def test_create_rule_null_payload_does_not_crash(self, mock_get_client):
+        """A null top-level mutation payload must not raise AttributeError."""
+        mock_client = AsyncMock()
+        mock_client.gql_call.return_value = {"createTransactionRuleV2": None}
+        mock_get_client.return_value = mock_client
+
+        result = await create_transaction_rule(
+            merchant_criteria_value="x", set_category_id="cat_1"
+        )
+
+        data = json.loads(result)
+        # No errors key present → treated as success, not an opaque crash.
+        assert data["success"] is True
+
+    @patch('monarch_mcp_server.tools.rules.get_monarch_client')
     async def test_create_rule_between_amount(self, mock_get_client):
         """The 'between' operator sends a valueRange, not a null one."""
         mock_client = AsyncMock()

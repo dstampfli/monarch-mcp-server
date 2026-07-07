@@ -59,7 +59,9 @@ class TestGetTransactionsNeedingReview:
 
         result = await get_transactions_needing_review(needs_review=True)
 
-        transactions = json.loads(result)
+        envelope = json.loads(result)
+        assert envelope["tool"] == "get_transactions_needing_review"
+        transactions = envelope["data"]
         assert len(transactions) == 1
         assert transactions[0]["id"] == "txn_1"
         assert transactions[0]["needs_review"] is True
@@ -102,7 +104,7 @@ class TestGetTransactionsNeedingReview:
             needs_review=True, uncategorized_only=True
         )
 
-        transactions = json.loads(result)
+        transactions = json.loads(result)["data"]
         assert len(transactions) == 1
         assert transactions[0]["id"] == "txn_1"
         assert transactions[0]["category"] is None
@@ -149,7 +151,7 @@ class TestGetTransactionsNeedingReview:
 
         result = await get_transactions_needing_review(needs_review=True)
 
-        transactions = json.loads(result)
+        transactions = json.loads(result)["data"]
         assert len(transactions) == 1
         txn = transactions[0]
         assert txn["id"] == "txn_1"
@@ -185,8 +187,48 @@ class TestGetTransactionsNeedingReview:
 
         result = await get_transactions_needing_review()
 
-        transactions = json.loads(result)
+        envelope = json.loads(result)
+        assert envelope["data"] == []
+        assert envelope["truncated"] is False
+        transactions = envelope["data"]
         assert len(transactions) == 0
+
+    @patch("monarch_mcp_server.tools.transactions.get_monarch_client")
+    async def test_paginates_past_first_page(self, mock_get_client):
+        """Matches sitting past the first page must not be dropped."""
+
+        def _txn(i, needs_review):
+            return {
+                "id": f"t{i}",
+                "date": "2024-01-01",
+                "amount": -1.00,
+                "merchant": {"name": "M"},
+                "category": {"id": "c", "name": "C"},
+                "account": {"id": "a", "displayName": "A"},
+                "needsReview": needs_review,
+                "notes": None,
+                "tags": [],
+            }
+
+        # Page 1 is full (100 rows) so the tool fetches page 2; only a few rows
+        # across both pages actually need review.
+        page1 = [_txn(i, i < 2) for i in range(100)]
+        page2 = [_txn(100 + i, i < 3) for i in range(50)]
+        mock_client = AsyncMock()
+        mock_client.get_transactions.side_effect = [
+            {"allTransactions": {"results": page1}},
+            {"allTransactions": {"results": page2}},
+        ]
+        mock_get_client.return_value = mock_client
+
+        result = await get_transactions_needing_review(needs_review=True, limit=100)
+
+        envelope = json.loads(result)
+        # 2 matches on page 1 + 3 on page 2, gathered across the page boundary.
+        assert len(envelope["data"]) == 5
+        assert envelope["truncated"] is False  # source exhausted on page 2
+        assert envelope["search"]["scanned_count"] == 150
+        assert mock_client.get_transactions.call_count == 2
 
 
 class TestUpdateTransactionNotes:

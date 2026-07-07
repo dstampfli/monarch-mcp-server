@@ -47,11 +47,21 @@ def tool_response_envelope(
     limit and total_count is unknown.
     """
     count = len(rows)
-    limit = args.get("limit")
-    offset = args.get("offset") or 0
+
+    def _as_int(value: Any) -> Optional[int]:
+        """Coerce a possibly string-typed pagination arg to int, or None."""
+        if isinstance(value, bool) or value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    limit = _as_int(args.get("limit"))
+    offset = _as_int(args.get("offset")) or 0
     truncated = (
         offset + count < total_count
-        if isinstance(total_count, int)
+        if isinstance(total_count, int) and not isinstance(total_count, bool)
         else isinstance(limit, int) and count == limit
     )
 
@@ -74,24 +84,38 @@ def format_transaction(txn: Dict[str, Any], extended: bool = False) -> Dict[str,
         extended: If True, include extra fields like is_split, is_recurring,
                   has_attachments.
     """
+    # Nested fields are guarded with isinstance rather than truthiness: if the
+    # API ever returns a truthy non-dict (or non-list tags), a plain .get()
+    # would raise AttributeError and mask the whole transaction behind an
+    # opaque error.
+    merchant = txn.get("merchant")
+    merchant = merchant if isinstance(merchant, dict) else {}
+    category = txn.get("category")
+    category = category if isinstance(category, dict) else {}
+    account = txn.get("account")
+    account = account if isinstance(account, dict) else {}
+    tags = txn.get("tags")
+    tags = tags if isinstance(tags, list) else []
+
     info: Dict[str, Any] = {
         "id": txn.get("id"),
         "date": txn.get("date"),
         "amount": txn.get("amount"),
-        "merchant": txn.get("merchant", {}).get("name") if txn.get("merchant") else None,
+        "merchant": merchant.get("name") or None,
         "original_name": txn.get("plaidName") or txn.get("originalName"),
-        "category": txn.get("category", {}).get("name") if txn.get("category") else None,
-        "category_id": txn.get("category", {}).get("id") if txn.get("category") else None,
-        "account": txn.get("account", {}).get("displayName") if txn.get("account") else None,
-        "account_id": txn.get("account", {}).get("id") if txn.get("account") else None,
+        "category": category.get("name") or None,
+        "category_id": category.get("id") or None,
+        "account": account.get("displayName") or None,
+        "account_id": account.get("id") or None,
         "notes": txn.get("notes"),
         "needs_review": txn.get("needsReview", False),
         "is_pending": txn.get("pending", False),
         "hide_from_reports": txn.get("hideFromReports", False),
         "tags": [
             {"id": tag.get("id"), "name": tag.get("name")}
-            for tag in txn.get("tags", [])
-        ] if txn.get("tags") else [],
+            for tag in tags
+            if isinstance(tag, dict)
+        ],
     }
 
     if extended:

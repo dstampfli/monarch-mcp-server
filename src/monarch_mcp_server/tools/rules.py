@@ -402,7 +402,7 @@ async def create_transaction_rule(
             variables={"input": rule_input},
         )
 
-        errors = result.get("createTransactionRuleV2", {}).get("errors")
+        errors = (result.get("createTransactionRuleV2") or {}).get("errors")
         if errors:
             return json_success({"success": False, "errors": errors})
 
@@ -524,7 +524,7 @@ async def update_transaction_rule(
             variables={"input": rule_input},
         )
 
-        errors = result.get("updateTransactionRuleV2", {}).get("errors")
+        errors = (result.get("updateTransactionRuleV2") or {}).get("errors")
         if errors:
             return json_success({"success": False, "errors": errors})
 
