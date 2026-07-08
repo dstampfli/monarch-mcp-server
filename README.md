@@ -152,7 +152,30 @@ Long-lived sessions, supports SSO accounts, and sidesteps Cloudflare CAPTCHA gat
 2. Open DevTools (F12) → Network tab.
 3. Click any request whose Name starts with `graphql` (or any request to `api.monarch.com`).
 4. Scroll to Request Headers, find the `cookie:` header, and copy the full value.
-5. Paste it into the prompt.
+5. Provide the cookie to the script (see below).
+
+**Provide the cookie via a `.env` file (recommended)** rather than pasting it
+into the prompt. A full Monarch `cookie:` header is often 1.5–3 KB, and macOS
+truncates any single pasted terminal line longer than 1024 bytes
+(`MAX_CANON`), which silently cuts off the cookie. A `.env` file has no such
+limit:
+
+```bash
+cp .env.example .env
+# edit .env and set, on one line:
+#   MONARCH_COOKIE="session=...; __cf_bm=...; ..."
+uv run python login_setup.py        # choose option 1; it auto-loads .env
+```
+
+`.env` is gitignored, so your cookie is never committed. It is stored in
+plaintext, so delete `.env` once the session is saved to your keyring if you
+prefer not to keep the cookie on disk.
+
+Alternatives if you don't want a `.env` file: set `MONARCH_COOKIE` inline
+(`MONARCH_COOKIE="$(pbpaste)" uv run python login_setup.py`), or, when the
+script prompts, give it the path to a file containing the cookie
+(`pbpaste > ~/monarch-cookie.txt`). Direct paste still works as a fallback but
+only for cookies under ~1024 bytes.
 
 The script verifies the cookies against the live API before saving them to your system keyring.
 
@@ -430,7 +453,13 @@ If your session dies quickly (under a couple of hours), the most common cause is
 If `login_setup.py` reports "Programmatic login is blocked by Cloudflare CAPTCHA", choose option 1 (browser cookies) instead. Email/password POSTs to Monarch's login endpoint are sometimes gated by Cloudflare for unfamiliar IPs or rapid retries; cookie-based auth bypasses that endpoint entirely.
 
 ### Cookie paste is cut off / cookie login fails with a long cookie
-Terminals on macOS/Linux truncate a single pasted line longer than ~1024 characters at the hidden `getpass` prompt, so a long `cookie:` header gets silently cut off and cookie login fails. The bulk of that length is analytics/consent cookies (`ajs_*`, `osano_*`) that aren't needed for auth — before pasting, trim the value down to the essential session cookies (`session_id`, `csrftoken`, and `cf_clearance`), which comfortably fit under the limit.
+macOS caps a single canonical-mode terminal line at 1024 bytes (`MAX_CANON`), so a long `cookie:` header pasted into the prompt gets silently cut off and cookie login fails. Don't paste it — provide the cookie a different way, none of which is length-limited:
+
+- **`.env` file (recommended):** `cp .env.example .env`, set `MONARCH_COOKIE="..."` on one line, then run `login_setup.py` (it auto-loads `.env`).
+- **Env var:** `MONARCH_COOKIE="$(pbpaste)" uv run python login_setup.py`.
+- **File path:** `pbpaste > ~/monarch-cookie.txt`, then give that path when the script asks.
+
+(If you must paste directly, trimming the value to the essential session cookies — `session_id`, `csrftoken`, `cf_clearance` — drops it under the limit, but the options above avoid the problem entirely.)
 
 ### `'Context' object has no attribute 'elicit'`
 The `monarch_login` and `monarch_login_with_token` tools require the MCP Python SDK 1.10.0 or newer (released June 2025). If your environment cached an older `mcp` install, refresh it:

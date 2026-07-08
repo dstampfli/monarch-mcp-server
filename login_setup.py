@@ -14,13 +14,25 @@ Supports three auth paths in order of recommendation:
 
 import asyncio
 import getpass
+import os
 import sys
 from pathlib import Path
 
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
+# Load a local .env (e.g. MONARCH_COOKIE=...) if python-dotenv is available.
+# It is a declared dependency, but guard the import so the script still runs
+# under a bare interpreter without it.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
+
 from monarchmoney import CaptchaRequiredException, RequireMFAException
+
 from monarch_mcp_server.monarch_auth import (
     EmailOtpRequiredException,
     create_monarch_client,
@@ -30,7 +42,21 @@ from monarch_mcp_server.monarch_auth import (
 from monarch_mcp_server.secure_session import secure_session
 
 
-async def _login_with_cookies():
+def _read_cookie_string():
+    """Read the cookie header, avoiding the terminal's line-length limit.
+
+    A full Monarch ``cookie:`` header is often 1.5-3 KB, but macOS caps
+    canonical-mode terminal input at MAX_CANON (1024 bytes) per line, so
+    pasting the cookie into a ``getpass``/``input`` prompt silently
+    truncates it and swallows the Enter keypress. Reading from an env var
+    or a file sidesteps that entirely. Direct paste is kept only as a
+    last resort for short inputs.
+    """
+    env_cookie = os.environ.get("MONARCH_COOKIE", "").strip()
+    if env_cookie:
+        print("📎 Using cookie from MONARCH_COOKIE (.env or environment).")
+        return env_cookie
+
     print("\n📋 To copy the right cookie string:")
     print("  1. Log in to https://app.monarch.com in Chrome or Firefox")
     print("  2. Open DevTools (F12) → Network tab")
@@ -39,9 +65,39 @@ async def _login_with_cookies():
     print("  4. Scroll to 'Request Headers' and find the 'cookie:' header")
     print("  5. Copy the full value (a long string of key=value; pairs)")
     print()
-    cookie_string = getpass.getpass("Paste the Cookie header value: ").strip()
+    print(
+        "⚠️  On macOS the terminal truncates pasted lines longer than 1024 "
+        "bytes, and the cookie is usually longer than that. So save the "
+        "cookie to a file and enter its path here instead of pasting it."
+    )
+    print("   e.g.  pbpaste > ~/monarch-cookie.txt   (after copying the value)")
+    print()
+    path = input("Path to file containing the cookie: ").strip()
+    if path:
+        path = os.path.expanduser(path)
+        try:
+            cookie_string = Path(path).read_text().strip()
+        except OSError as e:
+            print(f"❌ Could not read {path}: {e}")
+            return None
+        if not cookie_string:
+            print(f"❌ File {path} is empty. Exiting.")
+            return None
+        return cookie_string
+
+    # Fallback: direct paste (only reliable for cookies under ~1024 bytes).
+    cookie_string = getpass.getpass(
+        "No path given; paste the Cookie header value instead: "
+    ).strip()
     if not cookie_string:
-        print("❌ No cookie string provided. Exiting.")
+        print("❌ No cookie provided. Exiting.")
+        return None
+    return cookie_string
+
+
+async def _login_with_cookies():
+    cookie_string = _read_cookie_string()
+    if not cookie_string:
         return None
     try:
         mm = await login_with_browser_cookies(cookie_string)
@@ -117,6 +173,7 @@ async def main():
 
     try:
         import monarchmoney
+
         print(
             f"📦 MonarchMoney version: "
             f"{getattr(monarchmoney, '__version__', 'unknown')}"
