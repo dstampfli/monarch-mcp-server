@@ -144,7 +144,17 @@ uv run python login_setup.py        # or: python login_setup.py
 
 The script offers three login paths:
 
-#### Option 1 (recommended): Session cookies from your browser
+> **Which path should I use?** Cookie login (option 1) avoids Cloudflare CAPTCHA
+> and supports SSO, but it can be finicky: you must copy the *exact* cookie the
+> `api.monarch.com/graphql` request sends, and that session can be rotated or
+> scoped such that a hand-copied `cookie:` header is rejected with
+> `401 "Authentication credentials were not provided."` even though it looks
+> complete. If cookie login keeps failing that way, **use email + password
+> (option 2)** — it asks Monarch directly for a long-lived token, sidesteps the
+> cookie-scoping pitfalls entirely, and is generally the more robust path.
+> Fall back to cookies only if option 2 is blocked by a Cloudflare CAPTCHA.
+
+#### Option 1: Session cookies from your browser
 
 Long-lived sessions, supports SSO accounts, and sidesteps Cloudflare CAPTCHA gates on programmatic login. Steps:
 
@@ -179,9 +189,11 @@ only for cookies under ~1024 bytes.
 
 The script verifies the cookies against the live API before saving them to your system keyring.
 
-#### Option 2: Email and password
+#### Option 2 (most reliable): Email and password
 
-Standard interactive login. The script handles:
+Standard interactive login, and the most dependable path since it requests a
+token directly rather than depending on a hand-copied browser cookie. The
+script handles:
 
 - Email verification codes (Monarch may send one for a new device session even when MFA is off).
 - TOTP MFA codes if you have MFA enabled.
@@ -460,6 +472,12 @@ macOS caps a single canonical-mode terminal line at 1024 bytes (`MAX_CANON`), so
 - **File path:** `pbpaste > ~/monarch-cookie.txt`, then give that path when the script asks.
 
 (If you must paste directly, trimming the value to the essential session cookies — `session_id`, `csrftoken`, `cf_clearance` — drops it under the limit, but the options above avoid the problem entirely.)
+
+### Cookie login fails with `401 "Authentication credentials were not provided."`
+This is different from a truncated cookie: all the cookie keys are present and well-formed, but Monarch's API still rejects the session. It means the `session_id` you copied isn't the one `api.monarch.com` accepts — the browser sends the correctly-scoped session automatically, but a hand-copied `cookie:` header can capture a `session_id` scoped to `app.monarch.com`, or one that has since rotated. Things to try, in order:
+
+1. Copy the cookie from an **`api.monarch.com/graphql`** request specifically (status 200) — not the page/document request and not the Application → Cookies panel. Right-click the request → **Copy → Copy as cURL** captures the exact header with no scope ambiguity.
+2. If it still fails, **switch to email + password (option 2)**. It requests a token directly and avoids cookie scoping entirely; this is the most reliable fix.
 
 ### `'Context' object has no attribute 'elicit'`
 The `monarch_login` and `monarch_login_with_token` tools require the MCP Python SDK 1.10.0 or newer (released June 2025). If your environment cached an older `mcp` install, refresh it:
