@@ -182,9 +182,6 @@ async def main():
         print(f"⚠️  Could not check version: {e}")
 
     try:
-        secure_session.delete_token()
-        print("🗑️ Cleared existing secure sessions")
-
         print("\nHow do you sign in to Monarch Money?")
         print(
             "  1) Session cookies from browser   "
@@ -228,6 +225,9 @@ async def main():
 
         try:
             print("\n🔐 Saving session securely to system keyring...")
+            # Only now that the new login is verified do we clear any prior
+            # session, so a failed login never leaves the user logged out.
+            secure_session.delete_token()
             secure_session.save_authenticated_session(mm)
             print("✅ Session saved")
         except Exception as save_error:
