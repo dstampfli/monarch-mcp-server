@@ -14,13 +14,14 @@ from monarch_mcp_server.tools.accounts import (
 class TestGetAccounts:
     async def test_returns_formatted_account_list(self):
         result = json.loads(await get_accounts())
-        assert len(result) == 2
+        assert len(result) == 3
         assert result[0]["id"] == "acc-1"
         assert result[0]["name"] == "Checking Account"
         assert result[0]["type"] == "checking"
         assert result[0]["balance"] == 1500.00
         assert result[0]["current_balance"] == 1500.00
         assert result[0]["display_balance"] == 500.00
+        assert result[0]["is_asset"] is True
         assert result[0]["institution"] == "Test Bank"
         assert result[0]["is_active"] is True
         assert result[0]["is_hidden"] is False
@@ -28,6 +29,145 @@ class TestGetAccounts:
     async def test_hidden_account_flagged(self):
         result = json.loads(await get_accounts())
         assert result[1]["is_hidden"] is True
+
+    async def test_balance_alias_tracks_current_balance(self):
+        """`balance` is a documented alias of `current_balance`, not of display."""
+        for account in json.loads(await get_accounts()):
+            assert account["balance"] == account["current_balance"]
+
+    async def test_liability_signs_passed_through_unchanged(self):
+        """Liabilities carry a negative current_balance and positive display_balance.
+
+        Both are surfaced verbatim -- callers pick the convention they need,
+        and is_asset is what tells them apart.
+        """
+        card = json.loads(await get_accounts())[2]
+        assert card["id"] == "acc-3"
+        assert card["is_asset"] is False
+        assert card["current_balance"] == -250.00
+        assert card["display_balance"] == 250.00
+
+    async def test_signed_balance_for_asset_is_current_balance(self):
+        result = json.loads(await get_accounts())
+        assert result[0]["is_asset"] is True
+        assert result[0]["signed_balance"] == result[0]["current_balance"]
+
+    async def test_signed_balance_negates_amount_owed_for_liability(self):
+        card = json.loads(await get_accounts())[2]
+        assert card["is_asset"] is False
+        assert card["display_balance"] == 250.00
+        assert card["signed_balance"] == -250.00
+
+    async def test_signed_balance_corrects_wrong_current_balance_sign(
+        self, mock_monarch_client
+    ):
+        """Monarch returns a positive current_balance for an amount owed.
+
+        Observed on MX-sourced store cards: currentBalance comes back positive
+        while the stored balance history -- what net worth is built from --
+        holds the negative. display_balance is correct, so signed_balance must
+        follow it, not current_balance.
+        """
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {
+                    "id": "acc-6",
+                    "displayName": "Store Card",
+                    "type": {"name": "credit"},
+                    "currentBalance": 36.05,  # wrong sign, upstream
+                    "displayBalance": 36.05,  # owed, correct
+                    "isAsset": False,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                }
+            ]
+        }
+        card = json.loads(await get_accounts())[0]
+        assert card["current_balance"] == 36.05
+        assert card["signed_balance"] == -36.05
+
+    async def test_signed_balance_falls_back_when_undeterminable(
+        self, mock_monarch_client
+    ):
+        """No isAsset, or no displayBalance -> fall back, never guess a sign."""
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {  # isAsset missing: nothing to key the negation off
+                    "id": "acc-7",
+                    "displayName": "No Flag",
+                    "type": {"name": "credit"},
+                    "currentBalance": -10.0,
+                    "displayBalance": 10.0,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                },
+                {  # liability with no displayBalance to negate
+                    "id": "acc-8",
+                    "displayName": "No Display",
+                    "type": {"name": "credit"},
+                    "currentBalance": -20.0,
+                    "displayBalance": None,
+                    "isAsset": False,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                },
+            ]
+        }
+        result = json.loads(await get_accounts())
+        assert result[0]["signed_balance"] == -10.0
+        assert result[1]["signed_balance"] == -20.0
+
+    async def test_overpaid_liability_keeps_positive_signed_balance(
+        self, mock_monarch_client
+    ):
+        """A liability in credit is legitimately positive -- do not "correct" it.
+
+        An overpaid card owes the user money, so its signed balance adds to net
+        worth and display_balance (amount owed) goes negative. is_asset stays
+        False: the account is still a liability, it just happens to be in credit.
+        """
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {
+                    "id": "acc-5",
+                    "displayName": "Overpaid Card",
+                    "type": {"name": "credit"},
+                    "currentBalance": 17.51,
+                    "displayBalance": -17.51,
+                    "isAsset": False,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                }
+            ]
+        }
+        card = json.loads(await get_accounts())[0]
+        assert card["is_asset"] is False
+        assert card["current_balance"] == 17.51
+        assert card["display_balance"] == -17.51
+        assert card["signed_balance"] == 17.51
+
+    async def test_is_asset_absent_yields_none(self, mock_monarch_client):
+        """Older/narrower responses without isAsset must not raise."""
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {
+                    "id": "acc-4",
+                    "displayName": "No Asset Flag",
+                    "type": {"name": "credit"},
+                    "currentBalance": -10.0,
+                    "displayBalance": 10.0,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                }
+            ]
+        }
+        result = json.loads(await get_accounts())
+        assert result[0]["is_asset"] is None
 
     async def test_handles_null_type(self, mock_monarch_client):
         mock_monarch_client.get_accounts.return_value = {
@@ -84,8 +224,10 @@ class TestRefreshAccounts:
         """No args → fetch accounts, refresh only active+non-hidden ones."""
         result = json.loads(await refresh_accounts())
         assert result["requestAccountsRefresh"]["success"] is True
-        # Default fixture: acc-1 active+visible, acc-2 hidden. Only acc-1 refreshes.
-        mock_monarch_client.request_accounts_refresh.assert_awaited_once_with(["acc-1"])
+        # Default fixture: acc-1 and acc-3 active+visible, acc-2 hidden.
+        mock_monarch_client.request_accounts_refresh.assert_awaited_once_with(
+            ["acc-1", "acc-3"]
+        )
 
     async def test_passes_explicit_account_ids(self, mock_monarch_client):
         """Explicit account_ids must be passed through unchanged."""
@@ -100,7 +242,9 @@ class TestRefreshAccounts:
     async def test_empty_list_falls_back_to_auto_discover(self, mock_monarch_client):
         """An empty list is treated as 'refresh all visible', matching no-arg."""
         await refresh_accounts(account_ids=[])
-        mock_monarch_client.request_accounts_refresh.assert_awaited_once_with(["acc-1"])
+        mock_monarch_client.request_accounts_refresh.assert_awaited_once_with(
+            ["acc-1", "acc-3"]
+        )
 
     async def test_no_visible_accounts_returns_graceful_message(
         self, mock_monarch_client
