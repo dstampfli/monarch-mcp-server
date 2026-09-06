@@ -35,6 +35,7 @@ def mock_monarch_client():
                 "type": {"name": "checking"},
                 "currentBalance": 1500.00,
                 "displayBalance": 500.00,
+                "isAsset": True,
                 "institution": {"name": "Test Bank"},
                 "deactivatedAt": None,
                 "isHidden": False,
@@ -46,9 +47,25 @@ def mock_monarch_client():
                 "type": {"name": "savings"},
                 "currentBalance": 10000.00,
                 "displayBalance": 1000.00,
+                "isAsset": True,
                 "institution": {"name": "Test Bank"},
                 "deactivatedAt": None,
                 "isHidden": True,
+            },
+            {
+                # Liability: Monarch stores the signed balance in
+                # currentBalance (negative) and the amount owed in
+                # displayBalance (positive). Mirrors real API responses.
+                "id": "acc-3",
+                "displayName": "Credit Card",
+                "name": "Card",
+                "type": {"name": "credit"},
+                "currentBalance": -250.00,
+                "displayBalance": 250.00,
+                "isAsset": False,
+                "institution": {"name": "Test Bank"},
+                "deactivatedAt": None,
+                "isHidden": False,
             },
         ]
     }

@@ -25,7 +25,31 @@ class BalanceCorrections(RootModel[Dict[date, Decimal]]):
 
 @mcp.tool()
 async def get_accounts() -> str:
-    """Get all financial accounts from Monarch Money."""
+    """Get all financial accounts from Monarch Money.
+
+    Balance sign conventions (they differ, so pick deliberately):
+
+    - ``current_balance`` is Monarch's *signed* balance: it contributes to net
+      worth as-is. Assets are positive and liabilities are normally negative,
+      but do not treat "liability" as implying a negative -- an overpaid credit
+      card sits in credit and is legitimately positive. Use this field for any
+      net-worth or total-position math.
+    - ``display_balance`` is the amount as Monarch shows it in the UI. For a
+      liability it is the negation of the signed balance, i.e. the amount owed
+      as a positive number ($428,133.39 of mortgage, not -$428,133.39) -- and
+      correspondingly negative when the card is overpaid and owes you. For an
+      asset it equals ``current_balance``. Use it when echoing a balance back
+      to a human.
+    - ``balance`` is a backward-compatible alias of ``current_balance``.
+    - ``is_asset`` tells the two apart; without it the signs are ambiguous.
+
+    Caveat: these come straight from Monarch, whose data is not always
+    self-consistent. Some accounts (observed on MX-sourced credit cards) return
+    a ``current_balance`` whose sign disagrees with the stored balance history
+    that net worth is actually built from, so summing ``current_balance`` may
+    not reproduce ``get_net_worth`` exactly. Prefer ``get_net_worth`` when the
+    total is what matters.
+    """
     try:
         client = await get_monarch_client()
         accounts = await client.get_accounts()
@@ -36,9 +60,13 @@ async def get_accounts() -> str:
                 "id": account.get("id"),
                 "name": account.get("displayName") or account.get("name"),
                 "type": (account.get("type") or {}).get("name"),
+                # Alias of current_balance, kept so existing callers/prompts
+                # that read "balance" keep working. See the docstring for which
+                # of the two balance conventions each field follows.
                 "balance": account.get("currentBalance"),
                 "current_balance": account.get("currentBalance"),
                 "display_balance": account.get("displayBalance"),
+                "is_asset": account.get("isAsset"),
                 "institution": (account.get("institution") or {}).get("name"),
                 "is_active": account.get("isActive")
                 if "isActive" in account
