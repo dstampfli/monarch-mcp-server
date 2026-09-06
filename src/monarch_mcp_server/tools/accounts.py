@@ -29,10 +29,12 @@ def _signed_balance(account: Dict[str, Any]) -> Optional[float]:
     ``currentBalance`` is Monarch's signed balance for most accounts, but it is
     not reliable: some liabilities (observed on MX-sourced store cards) come
     back positive while the stored balance history -- the thing net worth is
-    built from -- holds the correct negative. The trigger is not known. It is
-    not the account subtype: correcting an affected card from ``other`` to
-    ``credit_card`` left ``currentBalance`` positive, and an ``other`` mortgage
-    on the same provider is signed correctly.
+    built from -- holds the correct negative. The trigger is not known, but two
+    explanations are ruled out. Not the account subtype: correcting an affected
+    card from ``other`` to ``credit_card`` left ``currentBalance`` positive, and
+    an ``other`` mortgage on the same provider is signed correctly. Not stale
+    data either: forcing a provider refresh re-fetched the balance and returned
+    the same positive value.
 
     ``displayBalance`` does not have that problem. For a liability it is
     consistently the negation of the signed balance (the amount owed, positive),
