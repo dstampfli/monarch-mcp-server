@@ -507,6 +507,33 @@ Alternatively, skip runtime resolution entirely and launch the console script in
 }
 ```
 
+### Claude Code: `✘ Failed to connect — CONNECTION_CLOSED`
+
+`claude mcp list` reports this when the server process dies during startup. The CLI swallows the traceback, so run the configured command by hand to see the real error:
+
+```bash
+cd /tmp && <the exact command and args from your config> < /dev/null
+```
+
+Two causes account for most of these:
+
+- **The mcp 2.x import error above** — any launch command that re-resolves the SDK at startup (`uv run --with "mcp[cli]" ...` with no version bound) can pick up 2.x.
+- **A stale venv after moving the repo.** Console scripts in `.venv/bin/` hard-code an absolute shebang to the interpreter that created them. If you move or rename the checkout, every script installed before the move still points at the old path, and `uv run ... mcp run ...` fails with `Failed to spawn: mcp — No such file or directory` even though `.venv/bin/mcp` is right there (the missing file is the *interpreter*, not the script). Check with `head -1 .venv/bin/mcp`; fix with `uv sync --reinstall`.
+
+To sidestep both, point the client at the console script that `uv sync` / `pip install -e .` installs, so nothing is resolved at launch:
+
+```bash
+claude mcp add --scope user monarch-money -- /path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server
+```
+
+`--scope user` makes the server available in every project; the default (`local`) registers it for the current directory only.
+
+### Claude Code: `✔ Connected` but every tool returns an auth error
+
+`claude mcp list` only confirms the process starts and completes the MCP handshake. It knows nothing about Monarch, so a server with a missing or expired session still reports as connected. Verify the credential separately with `check_auth_status`, then with a real call such as `get_accounts`; if that fails, re-run `login_setup.py`.
+
+Note that importing servers from Claude Desktop (`claude mcp add-from-claude-desktop`) copies each `command`/`args` verbatim — a Desktop entry with either problem above arrives broken in exactly the same way.
+
 ### Common Error Messages
 - **"No valid session found"**: Run `python login_setup.py` (or `uv run python login_setup.py`) 
 - **"Monarch sent a one-time code to your email"**: Run `python login_setup.py` and complete email verification
