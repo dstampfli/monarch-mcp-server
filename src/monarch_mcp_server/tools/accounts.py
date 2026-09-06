@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import RootModel, ValidationError
 
@@ -23,32 +23,62 @@ class BalanceCorrections(RootModel[Dict[date, Decimal]]):
     """
 
 
+def _signed_balance(account: Dict[str, Any]) -> Optional[float]:
+    """Recover the balance that actually contributes to net worth.
+
+    ``currentBalance`` is Monarch's signed balance for most accounts, but it is
+    not reliable: some liabilities (observed on MX-sourced cards that Monarch
+    failed to classify as ``credit_card`` and typed ``other``) come back
+    positive while the stored balance history -- the thing net worth is built
+    from -- holds the correct negative.
+
+    ``displayBalance`` does not have that problem. For a liability it is
+    consistently the negation of the signed balance (the amount owed, positive),
+    so negating it back recovers the signed value even for the broken accounts.
+    Verified against ``recentBalances`` across a live account: 0/38 disagreed,
+    and the sum reproduced Monarch's own net-worth snapshot exactly, where
+    summing ``currentBalance`` did not.
+
+    Falls back to ``currentBalance`` when the account is an asset, when
+    ``isAsset`` is missing (nothing to key the negation off), or when
+    ``displayBalance`` is absent -- never guessing a sign it cannot derive.
+    """
+    is_asset = account.get("isAsset")
+    display: Optional[float] = account.get("displayBalance")
+    if is_asset is False and display is not None:
+        return -display
+    current: Optional[float] = account.get("currentBalance")
+    return current
+
+
 @mcp.tool()
 async def get_accounts() -> str:
     """Get all financial accounts from Monarch Money.
 
     Balance sign conventions (they differ, so pick deliberately):
 
-    - ``current_balance`` is Monarch's *signed* balance: it contributes to net
-      worth as-is. Assets are positive and liabilities are normally negative,
-      but do not treat "liability" as implying a negative -- an overpaid credit
-      card sits in credit and is legitimately positive. Use this field for any
-      net-worth or total-position math.
+    - ``signed_balance`` is the value that contributes to net worth: positive
+      adds, negative subtracts. **Use this for any summing or net-worth math.**
+      It is computed, not raw -- see ``_signed_balance`` for why the raw field
+      cannot be trusted for that purpose.
     - ``display_balance`` is the amount as Monarch shows it in the UI. For a
-      liability it is the negation of the signed balance, i.e. the amount owed
-      as a positive number ($428,133.39 of mortgage, not -$428,133.39) -- and
-      correspondingly negative when the card is overpaid and owes you. For an
-      asset it equals ``current_balance``. Use it when echoing a balance back
-      to a human.
-    - ``balance`` is a backward-compatible alias of ``current_balance``.
-    - ``is_asset`` tells the two apart; without it the signs are ambiguous.
+      liability it is the amount owed as a positive number ($428,133.39 of
+      mortgage, not -$428,133.39) -- and correspondingly negative when the card
+      is overpaid and owes you. For an asset it equals ``current_balance``. Use
+      it when echoing a single balance back to a human.
+    - ``current_balance`` is Monarch's raw ``currentBalance``, passed through
+      unchanged. It is *usually* the signed balance, but Monarch returns it with
+      the wrong sign on some liabilities, so do not sum it -- that is what
+      ``signed_balance`` is for. Kept raw so the upstream value stays visible.
+    - ``balance`` is a backward-compatible alias of ``current_balance`` and
+      inherits the same caveat.
+    - ``is_asset`` distinguishes assets from liabilities; without it the sign
+      conventions above are ambiguous.
 
-    Caveat: these come straight from Monarch, whose data is not always
-    self-consistent. Some accounts (observed on MX-sourced credit cards) return
-    a ``current_balance`` whose sign disagrees with the stored balance history
-    that net worth is actually built from, so summing ``current_balance`` may
-    not reproduce ``get_net_worth`` exactly. Prefer ``get_net_worth`` when the
-    total is what matters.
+    Assets are positive and liabilities are normally negative, but do not treat
+    "liability" as implying a negative -- an overpaid credit card sits in credit
+    and is legitimately positive on both ``signed_balance`` and
+    ``current_balance``.
     """
     try:
         client = await get_monarch_client()
@@ -66,6 +96,7 @@ async def get_accounts() -> str:
                 "balance": account.get("currentBalance"),
                 "current_balance": account.get("currentBalance"),
                 "display_balance": account.get("displayBalance"),
+                "signed_balance": _signed_balance(account),
                 "is_asset": account.get("isAsset"),
                 "institution": (account.get("institution") or {}).get("name"),
                 "is_active": account.get("isActive")

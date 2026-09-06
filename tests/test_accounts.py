@@ -47,6 +47,81 @@ class TestGetAccounts:
         assert card["current_balance"] == -250.00
         assert card["display_balance"] == 250.00
 
+    async def test_signed_balance_for_asset_is_current_balance(self):
+        result = json.loads(await get_accounts())
+        assert result[0]["is_asset"] is True
+        assert result[0]["signed_balance"] == result[0]["current_balance"]
+
+    async def test_signed_balance_negates_amount_owed_for_liability(self):
+        card = json.loads(await get_accounts())[2]
+        assert card["is_asset"] is False
+        assert card["display_balance"] == 250.00
+        assert card["signed_balance"] == -250.00
+
+    async def test_signed_balance_corrects_wrong_current_balance_sign(
+        self, mock_monarch_client
+    ):
+        """The Kohl's case: Monarch returns a positive current_balance for a debt.
+
+        Some MX-sourced cards that Monarch typed ``other`` rather than
+        ``credit_card`` come back with currentBalance positive while the stored
+        balance history -- what net worth is built from -- holds the negative.
+        display_balance is correct, so signed_balance must follow it, not
+        current_balance.
+        """
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {
+                    "id": "acc-6",
+                    "displayName": "Store Card",
+                    "type": {"name": "credit"},
+                    "subtype": {"name": "other"},
+                    "currentBalance": 36.05,  # wrong sign, upstream
+                    "displayBalance": 36.05,  # owed, correct
+                    "isAsset": False,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                }
+            ]
+        }
+        card = json.loads(await get_accounts())[0]
+        assert card["current_balance"] == 36.05
+        assert card["signed_balance"] == -36.05
+
+    async def test_signed_balance_falls_back_when_undeterminable(
+        self, mock_monarch_client
+    ):
+        """No isAsset, or no displayBalance -> fall back, never guess a sign."""
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {  # isAsset missing: nothing to key the negation off
+                    "id": "acc-7",
+                    "displayName": "No Flag",
+                    "type": {"name": "credit"},
+                    "currentBalance": -10.0,
+                    "displayBalance": 10.0,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                },
+                {  # liability with no displayBalance to negate
+                    "id": "acc-8",
+                    "displayName": "No Display",
+                    "type": {"name": "credit"},
+                    "currentBalance": -20.0,
+                    "displayBalance": None,
+                    "isAsset": False,
+                    "institution": None,
+                    "deactivatedAt": None,
+                    "isHidden": False,
+                },
+            ]
+        }
+        result = json.loads(await get_accounts())
+        assert result[0]["signed_balance"] == -10.0
+        assert result[1]["signed_balance"] == -20.0
+
     async def test_overpaid_liability_keeps_positive_signed_balance(
         self, mock_monarch_client
     ):
@@ -75,6 +150,7 @@ class TestGetAccounts:
         assert card["is_asset"] is False
         assert card["current_balance"] == 17.51
         assert card["display_balance"] == -17.51
+        assert card["signed_balance"] == 17.51
 
     async def test_is_asset_absent_yields_none(self, mock_monarch_client):
         """Older/narrower responses without isAsset must not raise."""
