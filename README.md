@@ -50,7 +50,7 @@ My MonarchMoney referral: https://www.monarchmoney.com/referral/ufmn0r83yf?r_sou
          "args": [
            "run",
            "--with",
-           "mcp[cli]",
+           "mcp[cli]<2",
            "--with-editable",
            "/path/to/your/monarch-mcp-server",
            "mcp",
@@ -85,7 +85,7 @@ My MonarchMoney referral: https://www.monarchmoney.com/referral/ufmn0r83yf?r_sou
          "args": [
            "run",
            "--with",
-           "mcp[cli]",
+           "mcp[cli]<2",
            "--with-editable",
            "/path/to/your/monarch-mcp-server",
            "mcp",
@@ -108,7 +108,7 @@ My MonarchMoney referral: https://www.monarchmoney.com/referral/ufmn0r83yf?r_sou
        "args": [
          "run",
          "--with",
-         "mcp[cli]",
+         "mcp[cli]<2",
          "--with-editable",
          "/path/to/your/monarch-mcp-server",
          "mcp",
@@ -480,13 +480,32 @@ This is different from a truncated cookie: all the cookie keys are present and w
 2. If it still fails, **switch to email + password (option 2)**. It requests a token directly and avoids cookie scoping entirely; this is the most reliable fix.
 
 ### `'Context' object has no attribute 'elicit'`
-The `monarch_login` and `monarch_login_with_token` tools require the MCP Python SDK 1.10.0 or newer (released June 2025). If your environment cached an older `mcp` install, refresh it:
+The `monarch_login` and `monarch_login_with_token` tools require the MCP Python SDK 1.10.0 or newer (released June 2025), but below 2.0 — see the next section. If your environment cached an older `mcp` install, refresh it:
 
 ```bash
 uv cache clean mcp
 ```
 
 Then fully quit and reopen Claude Desktop or Claude Code so it relaunches the server with a fresh resolution. As a fallback while you upgrade, run `python login_setup.py` from the repo to authenticate via the terminal.
+
+### `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`
+
+The MCP Python SDK 2.0 renamed `FastMCP` to `MCPServer`, and this server is written against the v1 API. If your launch command resolves `mcp` fresh (for example `uv run --with "mcp[cli]" ...` without a version bound), uv will pick up 2.x and the server crashes at import with:
+
+```
+ModuleNotFoundError: No module named 'mcp.server.fastmcp'. This is mcp 2.x, where
+FastMCP was renamed to MCPServer ... see the migration guide ... or pin 'mcp<2'.
+```
+
+The dependency is pinned to `mcp[cli]>=1.10.0,<2`, and the config snippets above pass `--with "mcp[cli]<2"`. If you copied an older snippet that passes a bare `"mcp[cli]"`, add the `<2` bound, then fully quit and reopen Claude Desktop or Claude Code.
+
+Alternatively, skip runtime resolution entirely and launch the console script installed into the project venv by `uv sync` / `pip install -e .`:
+
+```json
+{
+  "command": "/path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server"
+}
+```
 
 ### Common Error Messages
 - **"No valid session found"**: Run `python login_setup.py` (or `uv run python login_setup.py`) 
