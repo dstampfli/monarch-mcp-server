@@ -61,13 +61,12 @@ class TestGetAccounts:
     async def test_signed_balance_corrects_wrong_current_balance_sign(
         self, mock_monarch_client
     ):
-        """The Kohl's case: Monarch returns a positive current_balance for a debt.
+        """Monarch returns a positive current_balance for an amount owed.
 
-        Some MX-sourced cards that Monarch typed ``other`` rather than
-        ``credit_card`` come back with currentBalance positive while the stored
-        balance history -- what net worth is built from -- holds the negative.
-        display_balance is correct, so signed_balance must follow it, not
-        current_balance.
+        Observed on MX-sourced store cards: currentBalance comes back positive
+        while the stored balance history -- what net worth is built from --
+        holds the negative. display_balance is correct, so signed_balance must
+        follow it, not current_balance.
         """
         mock_monarch_client.get_accounts.return_value = {
             "accounts": [
@@ -75,7 +74,6 @@ class TestGetAccounts:
                     "id": "acc-6",
                     "displayName": "Store Card",
                     "type": {"name": "credit"},
-                    "subtype": {"name": "other"},
                     "currentBalance": 36.05,  # wrong sign, upstream
                     "displayBalance": 36.05,  # owed, correct
                     "isAsset": False,
