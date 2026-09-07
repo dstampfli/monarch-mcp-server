@@ -46,90 +46,98 @@ My MonarchMoney referral: https://www.monarchmoney.com/referral/ufmn0r83yf?r_sou
    {
      "mcpServers": {
        "Monarch Money": {
-         "command": "/opt/homebrew/bin/uv",
-         "args": [
-           "run",
-           "--with",
-           "mcp[cli]<2",
-           "--with-editable",
-           "/path/to/your/monarch-mcp-server",
-           "mcp",
-           "run",
-           "/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"
-         ]
+         "command": "/path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server"
        }
      }
    }
    ```
 
+   That is the console script installed into the project venv by `uv sync` / `pip install -e .`. Launching it directly means nothing is resolved at startup, which rules out the mcp 2.x crash described under [Troubleshooting](#-troubleshooting). On Windows the path is `\.venv\Scripts\monarch-mcp-server.exe`.
+
    **Important**: Replace `/path/to/your/monarch-mcp-server` with your actual path!
 
-4. **Restart Claude Desktop**
+4. **Restart Claude Desktop** — quit it completely (Cmd-Q on macOS); closing the window is not enough.
 
 **OR**
 
 3. **Configure Claude Code** (CLI):
-   Add this to your Claude Code configuration file:
 
-   **Global** (all projects):
+   The quickest route is the CLI itself:
 
-   **macOS/Linux**: `~/.claude.json`
+   ```bash
+   claude mcp add --scope user monarch-money -- /path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server
+   ```
 
-   **Windows**: `%USERPROFILE%\.claude.json`
+   `--scope user` registers the server for every project; the default (`local`) registers it for the current directory only.
+
+   To edit the config by hand instead:
+
+   **Global** (all projects) — `~/.claude.json` on macOS/Linux, `%USERPROFILE%\.claude.json` on Windows:
 
    ```json
    {
      "mcpServers": {
        "Monarch Money": {
-         "command": "/opt/homebrew/bin/uv",
-         "args": [
-           "run",
-           "--with",
-           "mcp[cli]<2",
-           "--with-editable",
-           "/path/to/your/monarch-mcp-server",
-           "mcp",
-           "run",
-           "/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"
-         ]
+         "command": "/path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server"
        }
      }
    }
    ```
 
-   **Project-level** (specific directory):
-
-   Create `.mcp.json` in your project directory:
+   **Project-level** (specific directory): create `.mcp.json` in your project directory. It takes the same `mcpServers` wrapper as the global file — a bare `{"Monarch Money": {...}}` is silently ignored:
 
    ```json
    {
-     "Monarch Money": {
-       "command": "/opt/homebrew/bin/uv",
-       "args": [
-         "run",
-         "--with",
-         "mcp[cli]<2",
-         "--with-editable",
-         "/path/to/your/monarch-mcp-server",
-         "mcp",
-         "run",
-         "/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"
-       ]
+     "mcpServers": {
+       "Monarch Money": {
+         "command": "/path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server"
+       }
      }
-   }
-   ```
-
-   **If installed via `pip`** instead of `uv`, use:
-   ```json
-   {
-     "command": "python",
-     "args": ["/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"]
    }
    ```
 
    **Important**: Replace `/path/to/your/monarch-mcp-server` with your actual path!
 
-4. **Restart Claude Code**
+4. **Restart Claude Code**, then confirm with `claude mcp list`.
+
+#### Alternative: resolve at launch with `uv run`
+
+If you would rather not point at the venv, `uv` can build the environment at startup instead. Use this in place of the entry above, in either client:
+
+```json
+{
+  "mcpServers": {
+    "Monarch Money": {
+      "command": "/opt/homebrew/bin/uv",
+      "args": [
+        "run",
+        "--with",
+        "mcp[cli]<2",
+        "--with-editable",
+        "/path/to/your/monarch-mcp-server",
+        "mcp",
+        "run",
+        "/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"
+      ]
+    }
+  }
+}
+```
+
+The `<2` bound on `mcp[cli]` is required — without it uv resolves the 2.x SDK and the server crashes at import.
+
+**If installed via `pip`** and you would rather run the module directly:
+
+```json
+{
+  "mcpServers": {
+    "Monarch Money": {
+      "command": "python",
+      "args": ["/path/to/your/monarch-mcp-server/src/monarch_mcp_server/server.py"]
+    }
+  }
+}
+```
 
 ### 2. One-Time Authentication Setup
 
@@ -497,15 +505,7 @@ ModuleNotFoundError: No module named 'mcp.server.fastmcp'. This is mcp 2.x, wher
 FastMCP was renamed to MCPServer ... see the migration guide ... or pin 'mcp<2'.
 ```
 
-The dependency is pinned to `mcp[cli]>=1.10.0,<2`, and the config snippets above pass `--with "mcp[cli]<2"`. If you copied an older snippet that passes a bare `"mcp[cli]"`, add the `<2` bound, then fully quit and reopen Claude Desktop or Claude Code.
-
-Alternatively, skip runtime resolution entirely and launch the console script installed into the project venv by `uv sync` / `pip install -e .`:
-
-```json
-{
-  "command": "/path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server"
-}
-```
+The dependency is pinned to `mcp[cli]>=1.10.0,<2`. The [recommended config](#1-installation) launches the console script from the project venv, which never re-resolves the SDK and so cannot hit this at all. If you use the [`uv run` alternative](#alternative-resolve-at-launch-with-uv-run), make sure it passes `--with "mcp[cli]<2"` — an older snippet with a bare `"mcp[cli]"` will pick up 2.x — then fully quit and reopen Claude Desktop or Claude Code.
 
 ### Claude Code: `✘ Failed to connect — CONNECTION_CLOSED`
 
@@ -518,9 +518,9 @@ cd /tmp && <the exact command and args from your config> < /dev/null
 Two causes account for most of these:
 
 - **The mcp 2.x import error above** — any launch command that re-resolves the SDK at startup (`uv run --with "mcp[cli]" ...` with no version bound) can pick up 2.x.
-- **A stale venv after moving the repo.** Console scripts in `.venv/bin/` hard-code an absolute shebang to the interpreter that created them. If you move or rename the checkout, every script installed before the move still points at the old path, and `uv run ... mcp run ...` fails with `Failed to spawn: mcp — No such file or directory` even though `.venv/bin/mcp` is right there (the missing file is the *interpreter*, not the script). Check with `head -1 .venv/bin/mcp`; fix with `uv sync --reinstall`.
+- **A stale venv after moving the repo.** Everything in `.venv/bin/` hard-codes an absolute shebang to the interpreter that created it, so moving or renaming the checkout breaks *both* launch styles: the console script dies on a missing interpreter, and `uv run ... mcp run ...` fails with `Failed to spawn: mcp — No such file or directory` even though `.venv/bin/mcp` is right there (the missing file is the *interpreter*, not the script). Check with `head -1 .venv/bin/monarch-mcp-server`; fix with `uv sync --reinstall && uv sync --extra dev` — a bare `--reinstall` drops the dev extras.
 
-To sidestep both, point the client at the console script that `uv sync` / `pip install -e .` installs, so nothing is resolved at launch:
+The `uv run` form is exposed to both; the console script rules out the first. To move an existing Claude Code registration onto it:
 
 ```bash
 claude mcp add --scope user monarch-money -- /path/to/your/monarch-mcp-server/.venv/bin/monarch-mcp-server
