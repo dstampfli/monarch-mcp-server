@@ -74,8 +74,13 @@ from monarch_mcp_server.tools.budgets import (  # noqa: F401
 )
 from monarch_mcp_server.tools.financial import (  # noqa: F401
     get_cashflow,
+    get_cashflow_summary,
     get_net_worth,
     get_net_worth_by_account_type,
+)
+from monarch_mcp_server.tools.holdings import (  # noqa: F401
+    get_holdings_summary,
+    get_all_holdings,
 )
 from monarch_mcp_server.tools.merchants import (  # noqa: F401
     get_merchant,

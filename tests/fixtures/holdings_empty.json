@@ -1,0 +1,9 @@
+{
+  "portfolio": {
+    "aggregateHoldings": {
+      "edges": [],
+      "__typename": "AggregateHoldingConnection"
+    },
+    "__typename": "Portfolio"
+  }
+}

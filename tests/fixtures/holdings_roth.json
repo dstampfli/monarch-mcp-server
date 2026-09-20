@@ -1,0 +1,172 @@
+{
+  "portfolio": {
+    "aggregateHoldings": {
+      "edges": [
+        {
+          "node": {
+            "id": "agg-1",
+            "quantity": 1422.904,
+            "basis": 382045.04,
+            "totalValue": 379104.312,
+            "securityPriceChangeDollars": null,
+            "securityPriceChangePercent": null,
+            "lastSyncedAt": "2026-09-19T05:12:00+00:00",
+            "holdings": [
+              {
+                "id": "h-1",
+                "type": "mutual_fund",
+                "typeDisplay": "Mutual Fund",
+                "name": "Fidelity 500 Index Fund",
+                "ticker": "FXAIX",
+                "closingPrice": 266.43,
+                "isManual": false,
+                "closingPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+                "__typename": "Holding"
+              }
+            ],
+            "security": {
+              "id": "sec-1",
+              "name": "FIDELITY 500 INDEX",
+              "type": "mutual_fund",
+              "ticker": "FXAIX",
+              "typeDisplay": "Mutual Fund",
+              "currentPrice": 266.43,
+              "currentPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+              "closingPrice": 150.12,
+              "closingPriceUpdatedAt": "2023-03-01T20:00:00+00:00",
+              "oneDayChangePercent": null,
+              "oneDayChangeDollars": null,
+              "__typename": "Security"
+            },
+            "__typename": "AggregateHolding"
+          },
+          "__typename": "AggregateHoldingEdge"
+        },
+        {
+          "node": {
+            "id": "agg-2",
+            "quantity": 210.5,
+            "basis": 9500.00,
+            "totalValue": 11244.706,
+            "securityPriceChangeDollars": null,
+            "securityPriceChangePercent": null,
+            "lastSyncedAt": "2026-09-19T05:12:00+00:00",
+            "holdings": [
+              {
+                "id": "h-2",
+                "type": "etf",
+                "typeDisplay": "ETF",
+                "name": "JPMorgan BetaBuilders Developed Asia ex-Japan ETF",
+                "ticker": "BBAX",
+                "closingPrice": 53.42,
+                "isManual": false,
+                "closingPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+                "__typename": "Holding"
+              }
+            ],
+            "security": {
+              "id": "sec-2",
+              "name": "JPM BETABUILDERS DEV ASIA",
+              "type": "etf",
+              "ticker": null,
+              "typeDisplay": "ETF",
+              "currentPrice": null,
+              "currentPriceUpdatedAt": null,
+              "closingPrice": null,
+              "closingPriceUpdatedAt": null,
+              "oneDayChangePercent": null,
+              "oneDayChangeDollars": null,
+              "__typename": "Security"
+            },
+            "__typename": "AggregateHolding"
+          },
+          "__typename": "AggregateHoldingEdge"
+        },
+        {
+          "node": {
+            "id": "agg-3",
+            "quantity": 4210.77,
+            "basis": 0,
+            "totalValue": 4210.77,
+            "securityPriceChangeDollars": null,
+            "securityPriceChangePercent": null,
+            "lastSyncedAt": "2026-09-19T05:12:00+00:00",
+            "holdings": [
+              {
+                "id": "h-3",
+                "type": "cash",
+                "typeDisplay": "Cash",
+                "name": "JPMorgan Liquidity Sweep",
+                "ticker": null,
+                "closingPrice": 1.0,
+                "isManual": false,
+                "closingPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+                "__typename": "Holding"
+              }
+            ],
+            "security": null,
+            "__typename": "AggregateHolding"
+          },
+          "__typename": "AggregateHoldingEdge"
+        },
+        {
+          "node": {
+            "id": "agg-4",
+            "quantity": 1500.0,
+            "basis": 1500.0,
+            "totalValue": 1500.0,
+            "securityPriceChangeDollars": null,
+            "securityPriceChangePercent": null,
+            "lastSyncedAt": "2026-09-19T05:12:00+00:00",
+            "holdings": [
+              {
+                "id": "h-4",
+                "type": "other",
+                "typeDisplay": "Other",
+                "name": "Fed Fund Money Market Position",
+                "ticker": null,
+                "closingPrice": 1.0,
+                "isManual": false,
+                "closingPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+                "__typename": "Holding"
+              }
+            ],
+            "security": null,
+            "__typename": "AggregateHolding"
+          },
+          "__typename": "AggregateHoldingEdge"
+        },
+        {
+          "node": {
+            "id": "agg-5",
+            "quantity": 10,
+            "basis": 2000.0,
+            "totalValue": 2500.0,
+            "securityPriceChangeDollars": null,
+            "securityPriceChangePercent": null,
+            "lastSyncedAt": "2026-09-19T05:12:00+00:00",
+            "holdings": [],
+            "security": {
+              "id": "sec-5",
+              "name": "Apple Inc",
+              "type": "equity",
+              "ticker": "AAPL",
+              "typeDisplay": "Stock",
+              "currentPrice": 250.0,
+              "currentPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+              "closingPrice": 250.0,
+              "closingPriceUpdatedAt": "2026-09-18T20:00:00+00:00",
+              "oneDayChangePercent": null,
+              "oneDayChangeDollars": null,
+              "__typename": "Security"
+            },
+            "__typename": "AggregateHolding"
+          },
+          "__typename": "AggregateHoldingEdge"
+        }
+      ],
+      "__typename": "AggregateHoldingConnection"
+    },
+    "__typename": "Portfolio"
+  }
+}

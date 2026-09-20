@@ -126,8 +126,16 @@ def format_transaction(txn: Dict[str, Any], extended: bool = False) -> Dict[str,
     return info
 
 
-def json_success(data: Any) -> str:
-    """Serialize *data* to a JSON string for tool responses."""
+def json_success(data: Any, *, compact: bool = False) -> str:
+    """Serialize *data* to a JSON string for tool responses.
+
+    ``compact`` drops indentation and separator padding. Use it for tools whose
+    whole purpose is a small payload (the ``*_summary`` / ``get_all_holdings``
+    projections): indentation alone adds ~20% to a per-row payload, enough to
+    push a 42-holding account past the tool-result size limit.
+    """
+    if compact:
+        return json.dumps(data, separators=(",", ":"), default=str)
     return json.dumps(data, indent=2, default=str)
 
 

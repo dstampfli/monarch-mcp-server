@@ -1,6 +1,10 @@
 """Tests for shared helper functions."""
 
-from monarch_mcp_server.helpers import format_transaction, tool_response_envelope
+from monarch_mcp_server.helpers import (
+    format_transaction,
+    json_success,
+    tool_response_envelope,
+)
 
 
 class TestFormatTransaction:
@@ -41,3 +45,18 @@ class TestToolResponseEnvelope:
         rows = [{"id": "1"}, {"id": "2"}]
         env = tool_response_envelope("t", {"limit": 5, "offset": 0}, rows, total_count=2)
         assert env["truncated"] is False
+
+
+class TestJsonSuccessCompact:
+    def test_default_is_indented(self):
+        assert "\n" in json_success({"a": [1, 2]})
+
+    def test_compact_has_no_whitespace_padding(self):
+        out = json_success({"a": [1, 2], "b": "x"}, compact=True)
+        assert out == '{"a":[1,2],"b":"x"}'
+
+    def test_compact_still_stringifies_unknown_types(self):
+        from datetime import date
+
+        out = json_success({"d": date(2026, 9, 19)}, compact=True)
+        assert out == '{"d":"2026-09-19"}'

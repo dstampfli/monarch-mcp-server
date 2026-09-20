@@ -30,6 +30,53 @@ class TestGetAccounts:
         result = json.loads(await get_accounts())
         assert result[1]["is_hidden"] is True
 
+    async def test_subtype_and_holdings_count_surfaced(self, mock_monarch_client):
+        mock_monarch_client.get_accounts.return_value = {
+            "accounts": [
+                {
+                    "id": "acc-roth",
+                    "displayName": "Roth IRA",
+                    "type": {"name": "brokerage", "display": "Investments"},
+                    "subtype": {"name": "roth", "display": "Roth IRA"},
+                    "currentBalance": 100.0,
+                    "displayBalance": 100.0,
+                    "isAsset": True,
+                    "holdingsCount": 42,
+                }
+            ]
+        }
+        result = json.loads(await get_accounts())
+        assert result[0]["subtype"] == "roth"
+        assert result[0]["subtype_display"] == "Roth IRA"
+        assert result[0]["holdings_count"] == 42
+
+    async def test_subtype_and_holdings_count_absent_yield_none(self):
+        """The default fixture has neither field; they must not KeyError."""
+        result = json.loads(await get_accounts())
+        assert result[0]["subtype"] is None
+        assert result[0]["subtype_display"] is None
+        assert result[0]["holdings_count"] is None
+
+    async def test_existing_fields_unchanged_by_subtype_addition(self):
+        result = json.loads(await get_accounts())
+        expected = {
+            "id",
+            "name",
+            "type",
+            "balance",
+            "current_balance",
+            "display_balance",
+            "signed_balance",
+            "is_asset",
+            "institution",
+            "is_active",
+            "is_hidden",
+            "subtype",
+            "subtype_display",
+            "holdings_count",
+        }
+        assert set(result[0].keys()) == expected
+
     async def test_balance_alias_tracks_current_balance(self):
         """`balance` is a documented alias of `current_balance`, not of display."""
         for account in json.loads(await get_accounts()):

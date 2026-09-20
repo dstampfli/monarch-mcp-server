@@ -29,7 +29,10 @@ Tests use `pytest-asyncio` with `asyncio_mode = "auto"`, so `async def test_*` n
 2. `tools/__init__.py` imports every tool submodule, and each `@mcp.tool()` decorator registers against that singleton as a side effect of import. **A new tool module is invisible until added to `tools/__init__.py`.**
 3. `server.py` re-exports every public tool name so old imports (`from monarch_mcp_server.server import get_accounts`) and the `mcp run` entry point keep working. When you add a tool, also add it to the `server.py` re-export list and the `_TOOL_MODULES` list in `tests/conftest.py`.
 
-Tools are grouped by domain under `tools/`: `accounts`, `transactions`, `summaries`, `splits`, `tags`, `rules`, `categories`, `budgets`, `financial`, `merchants`, `auth`.
+Tools are grouped by domain under `tools/`: `accounts`, `transactions`, `summaries`, `splits`, `tags`, `rules`, `categories`, `budgets`, `financial`, `holdings`, `merchants`, `auth`.
+
+### Compact read tools
+`get_holdings_summary`, `get_all_holdings` (`tools/holdings.py`) and `get_cashflow_summary` (`tools/financial.py`) exist for a scheduled weekly review that must stay under the ~25K-token tool-result limit; the raw `get_account_holdings` / `get_cashflow` pass-throughs blow past it. They run the **same upstream queries** and re-project: Pydantic models fix field order, money is rounded to 2 dp at the projection layer, and they serialize with `json_success(..., compact=True)` because indentation alone adds ~20% and pushes a 42-holding account over the 12 KB target. Keep the raw tools byte-for-byte unchanged; the scheduled task falls back to them. Holdings field rules that are easy to get wrong: prefer `holdings[0]` over `security` for ticker/name/type/price (several ETFs have `security.ticker = null`, and `security.closingPrice` is stale), and an empty `edges` list is also what Monarch returns for an unknown account id, so `get_holdings_summary` confirms the id against `get_accounts` before reporting "no holdings".
 
 ### Client access
 Every tool obtains its client via `await get_monarch_client()` (`client.py`), which returns a module-cached, keyring-authenticated `MonarchMoney` instance. Tools never construct clients or trigger logins directly. If no session exists it raises `RuntimeError("Authentication needed! Run: python login_setup.py")`. Call `clear_client_cache()` after re-auth.

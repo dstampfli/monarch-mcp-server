@@ -83,6 +83,15 @@ async def get_accounts() -> str:
     "liability" as implying a negative -- an overpaid credit card sits in credit
     and is legitimately positive on both ``signed_balance`` and
     ``current_balance``.
+
+    Classification fields: ``subtype`` is Monarch's machine subtype (values
+    observed live: ``ira``, ``roth``, ``brokerage``, ``st_401k``, ``st_403b``,
+    ``health_savings_account``, ``variable_annuity``,
+    ``education_savings_account``, ``stock_plan``, ``other``) with
+    ``subtype_display`` as its label. Note a Roth IRA may still be filed under
+    ``ira`` if that is how Monarch classified the account; ``holdings_count`` is how many holdings
+    Monarch has synced, so 0 means ``get_holdings_summary`` will return ``[]``
+    for that account. Any of the three may be null when Monarch omits them.
     """
     try:
         client = await get_monarch_client()
@@ -94,6 +103,13 @@ async def get_accounts() -> str:
                 "id": account.get("id"),
                 "name": account.get("displayName") or account.get("name"),
                 "type": (account.get("type") or {}).get("name"),
+                # Monarch's machine subtype (ira, st_401k, st_403b, ...) and its
+                # label; lets callers classify accounts without name-matching.
+                "subtype": (account.get("subtype") or {}).get("name"),
+                "subtype_display": (account.get("subtype") or {}).get("display"),
+                # Number of holdings Monarch has synced. 0 means holdings
+                # queries for this account will always come back empty.
+                "holdings_count": account.get("holdingsCount"),
                 # Alias of current_balance, kept so existing callers/prompts
                 # that read "balance" keep working. See the docstring for which
                 # of the two balance conventions each field follows.

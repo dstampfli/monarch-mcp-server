@@ -1,14 +1,74 @@
 """Financial analytics tools (cashflow, net worth)."""
 
 import logging
+from datetime import date
 from datetime import datetime as dt
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 
 from monarch_mcp_server.app import mcp
 from monarch_mcp_server.client import get_monarch_client
 from monarch_mcp_server.helpers import json_success, json_error
 
 logger = logging.getLogger(__name__)
+
+# Categories that net to zero across accounts and are noise in a review, even
+# when a user has moved them out of Monarch's transfer group (Sell, for one,
+# ships under income).
+_TRANSFER_CATEGORY_NAMES = frozenset(
+    {"transfer", "credit card payment", "buy", "sell"}
+)
+
+
+class CategoryAmount(BaseModel):
+    category: str
+    amount: float
+
+
+class CategoryGroupAmount(BaseModel):
+    category: str
+    group: Optional[str] = None
+    amount: float
+
+
+class GroupAmount(BaseModel):
+    group: str
+    amount: float
+
+
+class CashflowSummary(BaseModel):
+    """Aggregates-only cashflow for a date range (``get_cashflow_summary``)."""
+
+    start_date: str
+    end_date: str
+    income: float
+    expenses: float
+    savings: float
+    savings_rate_pct: Optional[float] = None
+    income_by_category: List[CategoryAmount]
+    expenses_by_category: List[CategoryGroupAmount]
+    expenses_by_group: List[GroupAmount]
+
+
+def _parse_iso_date(value: Optional[str], label: str) -> str:
+    """Return *value* if it is a real YYYY-MM-DD date, else raise ValueError.
+
+    The length check matters: ``date.fromisoformat`` also accepts ``20260901``
+    and, on 3.11+, ISO week and ordinal forms, which Monarch would reject.
+    """
+    if isinstance(value, str) and len(value) == 10:
+        try:
+            return date.fromisoformat(value).isoformat()
+        except ValueError:
+            pass
+    raise ValueError(f"{label} must be a date in YYYY-MM-DD format, got {value!r}")
+
+
+def _is_transfer(name: Optional[str], group_type: Optional[str]) -> bool:
+    if group_type == "transfer":
+        return True
+    return (name or "").strip().lower() in _TRANSFER_CATEGORY_NAMES
 
 
 @mcp.tool()
@@ -35,6 +95,111 @@ async def get_cashflow(
         return json_success(cashflow)
     except Exception as e:
         return json_error("get_cashflow", e)
+
+
+@mcp.tool()
+async def get_cashflow_summary(
+    start_date: str,
+    end_date: Optional[str] = None,
+    top_n: int = 15,
+) -> str:
+    """Compact cashflow for a date range: totals plus per-category/group lists.
+
+    Same upstream query as ``get_cashflow`` but returns only the summary block
+    and category / category-group totals -- no merchant list, no
+    ``__typename``. Under 5 KB for any range. Transfer-type categories
+    (Transfer, Credit Card Payment, Buy, Sell and anything in Monarch's
+    transfer group) are excluded because they net to zero.
+
+    Returns a JSON object::
+
+        {"start_date": "2026-09-01", "end_date": "2026-09-19",
+         "income": 15833.53, "expenses": 11368.56, "savings": 4464.97,
+         "savings_rate_pct": 28.2,
+         "income_by_category": [{"category": "Paychecks", "amount": 9180.29}],
+         "expenses_by_category": [{"category": "Mortgage", "group": "Housing",
+                                   "amount": 3160.65}],
+         "expenses_by_group": [{"group": "Housing", "amount": 4151.49}]}
+
+    All amounts are positive, rounded to 2 dp and sorted descending; each list
+    is capped at ``top_n``. ``savings_rate_pct`` is a percentage (28.2, not
+    0.282) and null when Monarch reports none.
+
+    Args:
+        start_date: Start date, YYYY-MM-DD (required).
+        end_date: End date, YYYY-MM-DD. Defaults to today.
+        top_n: Maximum rows per list. Default 15.
+    """
+    try:
+        start = _parse_iso_date(start_date, "start_date")
+        end = (
+            _parse_iso_date(end_date, "end_date")
+            if end_date is not None
+            else date.today().isoformat()
+        )
+
+        client = await get_monarch_client()
+        page = await client.get_cashflow(start_date=start, end_date=end)
+
+        summary_rows = page.get("summary") or []
+        summary = (summary_rows[0].get("summary") if summary_rows else None) or {}
+        if not summary:
+            raise ValueError("Monarch returned no cashflow summary for this range")
+
+        group_names: Dict[str, str] = {}
+        expenses_by_group: List[GroupAmount] = []
+        for row in page.get("byCategoryGroup") or []:
+            group = (row.get("groupBy") or {}).get("categoryGroup") or {}
+            gid, gname, gtype = group.get("id"), group.get("name"), group.get("type")
+            if not gname:
+                continue
+            if gid is not None:
+                group_names[str(gid)] = gname
+            amount = round(float((row.get("summary") or {}).get("sum") or 0), 2)
+            if gtype == "expense" and not _is_transfer(gname, gtype) and amount < 0:
+                expenses_by_group.append(GroupAmount(group=gname, amount=-amount))
+
+        income_by_category: List[CategoryAmount] = []
+        expenses_by_category: List[CategoryGroupAmount] = []
+        for row in page.get("byCategory") or []:
+            category = (row.get("groupBy") or {}).get("category") or {}
+            cname = category.get("name")
+            group = category.get("group") or {}
+            gtype = group.get("type")
+            if not cname or _is_transfer(cname, gtype):
+                continue
+            amount = round(float((row.get("summary") or {}).get("sum") or 0), 2)
+            if amount == 0:
+                continue
+            if gtype == "income" and amount > 0:
+                income_by_category.append(CategoryAmount(category=cname, amount=amount))
+            elif gtype == "expense" and amount < 0:
+                expenses_by_category.append(
+                    CategoryGroupAmount(
+                        category=cname,
+                        group=group_names.get(str(group.get("id"))),
+                        amount=-amount,
+                    )
+                )
+
+        def _top(rows: List[Any]) -> List[Any]:
+            return sorted(rows, key=lambda r: r.amount, reverse=True)[: max(top_n, 0)]
+
+        rate = summary.get("savingsRate")
+        result = CashflowSummary(
+            start_date=start,
+            end_date=end,
+            income=round(float(summary.get("sumIncome") or 0), 2),
+            expenses=round(abs(float(summary.get("sumExpense") or 0)), 2),
+            savings=round(float(summary.get("savings") or 0), 2),
+            savings_rate_pct=round(float(rate) * 100, 1) if rate is not None else None,
+            income_by_category=_top(income_by_category),
+            expenses_by_category=_top(expenses_by_category),
+            expenses_by_group=_top(expenses_by_group),
+        )
+        return json_success(result.model_dump(), compact=True)
+    except Exception as e:
+        return json_error("get_cashflow_summary", e)
 
 
 @mcp.tool()
