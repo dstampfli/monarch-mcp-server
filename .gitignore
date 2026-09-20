@@ -74,6 +74,8 @@ Thumbs.db
 *.pickle
 *.session
 *.json
+# Test fixtures are hand-built API shapes, not credentials.
+!tests/fixtures/*.json
 .env*
 !.env.example
 auth_tokens/

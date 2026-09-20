@@ -1,0 +1,29 @@
+{
+  "byCategory": [
+    {"groupBy": {"category": {"id": "c-pay", "name": "Paychecks", "group": {"id": "g-inc", "type": "income", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": 9180.29, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-oth", "name": "Other Income", "group": {"id": "g-inc", "type": "income", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": 5849.49, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-div", "name": "Dividends & Capital Gains", "group": {"id": "g-inc", "type": "income", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": 803.75, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-mort", "name": "Mortgage", "group": {"id": "g-house", "type": "expense", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -3160.65, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-util", "name": "Utilities", "group": {"id": "g-house", "type": "expense", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -990.84, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-groc", "name": "Groceries", "group": {"id": "g-food", "type": "expense", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -1112.89, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-rest", "name": "Restaurants", "group": {"id": "g-food", "type": "expense", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -604.18, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-xfer", "name": "Transfer", "group": {"id": "g-xfer", "type": "transfer", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -25000.00, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-ccp", "name": "Credit Card Payment", "group": {"id": "g-xfer", "type": "transfer", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -4200.00, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-buy", "name": "Buy", "group": {"id": "g-xfer", "type": "transfer", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -12000.00, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-sell", "name": "Sell", "group": {"id": "g-inc", "type": "income", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": 12000.00, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"category": {"id": "c-refund", "name": "Refund", "group": {"id": "g-inc", "type": "income", "__typename": "CategoryGroup"}, "__typename": "Category"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": 0.0, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"}
+  ],
+  "byCategoryGroup": [
+    {"groupBy": {"categoryGroup": {"id": "g-inc", "name": "Income", "type": "income", "__typename": "CategoryGroup"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": 27833.53, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"categoryGroup": {"id": "g-house", "name": "Housing", "type": "expense", "__typename": "CategoryGroup"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -4151.49, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"categoryGroup": {"id": "g-food", "name": "Food & Dining", "type": "expense", "__typename": "CategoryGroup"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -1717.07, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"categoryGroup": {"id": "g-xfer", "name": "Transfers", "type": "transfer", "__typename": "CategoryGroup"}, "__typename": "AggregateGroupBy"}, "summary": {"sum": -41200.00, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"}
+  ],
+  "byMerchant": [
+    {"groupBy": {"merchant": {"id": "m-1", "name": "Employer Payroll", "logoUrl": "https://logos.example/1.png", "__typename": "Merchant"}, "__typename": "AggregateGroupBy"}, "summary": {"sumIncome": 9180.29, "sumExpense": 0, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"},
+    {"groupBy": {"merchant": {"id": "m-2", "name": "Whole Foods", "logoUrl": "https://logos.example/2.png", "__typename": "Merchant"}, "__typename": "AggregateGroupBy"}, "summary": {"sumIncome": 0, "sumExpense": -1112.89, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"}
+  ],
+  "summary": [
+    {"summary": {"sumIncome": 15833.53, "sumExpense": -11368.56, "savings": 4464.97, "savingsRate": 0.282, "__typename": "TransactionsSummary"}, "__typename": "AggregateData"}
+  ]
+}

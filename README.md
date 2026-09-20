@@ -226,6 +226,7 @@ Once authenticated, use these tools directly in Claude Desktop or Claude Code:
 ### 📊 Account Management
 - **Get Accounts**: View all linked financial accounts with balances and institution info
 - **Get Account Holdings**: See securities and investments in investment accounts
+- **Get Holdings Summary / Get All Holdings**: Compact holdings projections (one row per holding, ~200 bytes each) for a single account or the whole portfolio in one call — built for scheduled reviews that must stay under the tool-result size limit
 - **Refresh Accounts**: Request real-time data updates from financial institutions
 
 ### 💰 Transaction Access
@@ -305,10 +306,13 @@ Once authenticated, use these tools directly in Claude Desktop or Claude Code:
 | `get_budgets` | Get budget information | `start_date`, `end_date` |
 | `set_budget_amount` | Set budget for a category | `amount`, `category_id`, `category_group_id`, `start_date`, `apply_to_future` |
 | `get_cashflow` | Get cashflow analysis | `start_date`, `end_date` |
+| `get_cashflow_summary` | Compact cashflow: totals plus per-category and per-group lists, transfers excluded (< 5 KB) | `start_date`, `end_date`, `top_n` |
 | `get_net_worth` | Get net worth history | `start_date`, `end_date`, `account_type` |
 | `get_account_balance_history` | Get account balance history | `account_id` |
 | `get_net_worth_by_account_type` | Get net worth by account type | `start_date`, `timeframe` |
-| `get_account_holdings` | Get investment holdings | `account_id` |
+| `get_account_holdings` | Get investment holdings (raw upstream payload) | `account_id` |
+| `get_holdings_summary` | Compact holdings for one account: ticker, name, type, quantity, price, value, basis, gain/loss | `account_id` |
+| `get_all_holdings` | Compact holdings for every brokerage account in one call, with per-account and portfolio totals | `include_inactive` |
 | `create_transaction` | Create new transaction | `account_id`, `amount`, `description`, `date`, `category_id`, `merchant_name` |
 | `update_transaction` | Update existing transaction | `transaction_id`, `amount`, `description`, `category_id`, `date` |
 | `refresh_accounts` | Request account data refresh | `account_ids` (optional — defaults to all active, visible accounts) |
